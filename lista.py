@@ -262,11 +262,14 @@ def eventi_m3u8_generator_world():
     OUTPUT_FILE = "eventi.m3u8" 
     LINK_DADDY = os.getenv("LINK_DADDY", "https://daddylive.dad").strip()
 
+    HTTP_TIMEOUT = 10  # seconds for requests
+    session = requests.Session()
+
         # Funzione per pulire il nome della categoria
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
         return re.sub(r'<[^>]+>', '', name).strip()
-        
+
     def clean_tvg_id(tvg_id):
         """
         Pulisce il tvg-id rimuovendo caratteri speciali, spazi e convertendo tutto in minuscolo
@@ -611,6 +614,86 @@ def eventi_m3u8_generator_world():
         
         # Se non troviamo nulla, restituiamo None 
         return None
+        
+    def get_iframe_url(url): 
+        try: 
+            resp = session.post(url, timeout=HTTP_TIMEOUT) 
+            resp.raise_for_status() 
+            match = re.search(r'iframe src="([^"]+)"', resp.text) 
+            return match.group(1) if match else None 
+        except requests.RequestException as e: 
+            print(f"[!] Errore richiesta iframe URL {url}: {e}") 
+            return None 
+     
+    def get_final_m3u8(iframe_url): 
+        try: 
+            parsed = re.search(r"https?://([^/]+)", iframe_url) 
+            if not parsed: 
+                print(f"[!] URL iframe non valido: {iframe_url}") 
+                return None 
+            referer_base = f"https://{parsed.group(1)}" 
+     
+            page_resp = session.post(iframe_url, timeout=HTTP_TIMEOUT) 
+            page_resp.raise_for_status() 
+            page = page_resp.text 
+     
+            key = re.search(r'var channelKey = "(.*?)"', page) 
+            ts  = re.search(r'var authTs     = "(.*?)"', page) 
+            rnd = re.search(r'var authRnd    = "(.*?)"', page) 
+            sig = re.search(r'var authSig    = "(.*?)"', page) 
+     
+            if not all([key, ts, rnd, sig]): 
+                print(f"[!] Mancano variabili auth in pagina {iframe_url}") 
+                return None 
+     
+            channel_key = key.group(1) 
+            auth_ts     = ts.group(1) 
+            auth_rnd    = rnd.group(1) 
+            auth_sig    = quote(sig.group(1), safe='') 
+     
+            auth_url = f"https://top2new.newkso.ru/auth.php?channel_id={channel_key}&ts={auth_ts}&rnd={auth_rnd}&sig={auth_sig}" 
+            session.get(auth_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT)
+     
+            lookup_url = f"{referer_base}/server_lookup.php?channel_id={quote(channel_key)}" 
+            lookup = session.get(lookup_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) 
+            lookup.raise_for_status() 
+            data = lookup.json() 
+     
+            server_key = data.get("server_key") 
+            if not server_key: 
+                print(f"[!] server_key non trovato per channel {channel_key}") 
+                return None 
+     
+            if server_key == "top1/cdn":
+                raw_m3u8_url = f"https://top1.newkso.ru/top1/cdn/{channel_key}/mono.m3u8"
+            else: 
+                raw_m3u8_url = f"https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.m3u8"
+            
+            if PROXY:
+                encoded_raw_m3u8_url = urllib.parse.quote(raw_m3u8_url)
+                proxied_stream_url = f"{PROXY.rstrip('/')}/proxy/m3u?url={encoded_raw_m3u8_url}"
+                return proxied_stream_url
+            else:
+                print(f"[!] PROXYIP environment variable not set for event stream. Returning raw URL for channel {channel_key}.")
+                return raw_m3u8_url
+     
+        except requests.RequestException as e: 
+            print(f"[!] Errore richiesta get_final_m3u8: {e}") 
+            return None 
+        except json.JSONDecodeError: 
+            print(f"[!] Errore parsing JSON da server_lookup per {iframe_url}") 
+            return None 
+     
+    def get_stream_from_channel_id(channel_id): 
+        embed_url = f"{LINK_DADDY.rstrip('/')}/stream-{channel_id}.php" 
+        iframe = get_iframe_url(embed_url) 
+        if iframe: 
+            return get_final_m3u8(iframe) 
+        return None 
+     
+    def clean_category_name(name): 
+        # Rimuove tag html come </span> o simili 
+        return re.sub(r'<[^>]+>', '', name).strip() 
      
     def extract_channels_from_json(path): 
         keywords = {"italy", "rai", "italia", "it", "uk", "tnt", "usa", "tennis channel", "tennis stream", "la"} 
@@ -684,46 +767,44 @@ def eventi_m3u8_generator_world():
       
     def generate_m3u_from_schedule(json_file, output_file): 
         categorized_channels = extract_channels_from_json(json_file) 
-      
+     
         with open(output_file, "w", encoding="utf-8") as f: 
             f.write("#EXTM3U\n") 
-      
+     
             for category, channels in categorized_channels.items(): 
                 if not channels: 
                     continue 
-      
-                f.write(f'#EXTINF:-1 tvg-name="{category}" group-title="Eventi Live",--- {category} ---\nhttps://example.m3u8\n\n') 
-      
+     
+                # Spacer con nome categoria pulito e group-title "Eventi Live" 
+                f.write(f'#EXTINF:-1 tvg-name="{category}" group-title="Eventi Live",--- {category} ---\nhttps://exemple.m3u8\n\n') 
+     
                 for ch in channels: 
                     tvg_name = ch["tvg_name"] 
                     channel_id = ch["channel_id"] 
-                    event_title = ch["event_title"] 
+                    event_title = ch["event_title"]  # Otteniamo il titolo dell'evento
                     
                     # Cerca un logo per questo evento
+                    # Rimuovi l'orario dal titolo dell'evento prima di cercare il logo
                     clean_event_title = re.sub(r'\s*\(\d{1,2}:\d{2}\)\s*$', '', event_title)
-                    print(f"[🔍] Ricerca logo per: {clean_event_title}")
+                    print(f"[🔍] Ricerca logo per: {clean_event_title}") 
                     logo_url = search_logo_for_event(clean_event_title) 
-                    logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else '' 
-                    
-                    # Applica la pulizia al tvg-id
-                    tvg_id_cleaned = clean_tvg_id(clean_event_title)
+                    logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else ''
+     
+                    try: 
+                        stream = get_stream_from_channel_id(channel_id) 
+                        if stream: 
+                            f.write(f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n') 
+                            print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)")) 
+                        else: 
+                            print(f"[✗] {tvg_name} - Nessuno stream trovato") 
+                    except Exception as e: 
+                        print(f"[!] Errore su {tvg_name}: {e}") 
       
-                    stream_url = (f"{PROXY}{LINK_DADDY}/embed/stream-{channel_id}.php")                    
-                    f.write(f'#EXTINF:-1 tvg-id="{tvg_id_cleaned}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream_url}\n\n')
-                    print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)"))
-      
-    if __name__ == "__main__": 
-        # Assicurati che il modulo requests sia installato 
-        try: 
-            import requests 
-        except ImportError: 
-            print("[!] Il modulo 'requests' non Ã¨ installato. Installalo con 'pip install requests'") 
-            exit(1) 
-             
-        generate_m3u_from_schedule(JSON_FILE, OUTPUT_FILE)
+    generate_m3u_from_schedule(JSON_FILE, OUTPUT_FILE)
+    session.close()
              
 # Funzione per il terzo script (eventi_m3u8_generator.py)
-def eventi_m3u8_generator():
+def eventi_m3u8_generator_world():
     # Codice del terzo script qui
     # Aggiungi il codice del tuo script "eventi_m3u8_generator.py" in questa funzione.
     print("Eseguendo l'eventi_m3u8_generator.py...")
@@ -731,9 +812,10 @@ def eventi_m3u8_generator():
     import json 
     import re 
     import requests 
+    from urllib.parse import quote 
     from datetime import datetime, timedelta 
     from dateutil import parser 
-    import urllib.parse 
+    import urllib.parse
     import os
     from dotenv import load_dotenv
     from PIL import Image, ImageDraw, ImageFont
@@ -743,12 +825,19 @@ def eventi_m3u8_generator():
     # Carica le variabili d'ambiente dal file .env
     load_dotenv()
 
-    PROXY = os.getenv("PROXYIP", "").strip()  
+    LINK_DADDY = os.getenv("LINK_DADDY", "https://daddylive.dad").strip()
+    PROXY = os.getenv("PROXYIP", "").strip()  # Proxy HLS 
     JSON_FILE = "daddyliveSchedule.json" 
     OUTPUT_FILE = "eventi.m3u8" 
-    LINK_DADDY = os.getenv("LINK_DADDY", "https://daddylive.dad").strip()
-
-    # Funzione per pulire il nome della categoria
+     
+    HEADERS = { 
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36" 
+    } 
+     
+    HTTP_TIMEOUT = 10 
+    session = requests.Session() 
+    session.headers.update(HEADERS) 
+    
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
         return re.sub(r'<[^>]+>', '', name).strip()
@@ -806,21 +895,6 @@ def eventi_m3u8_generator():
                         # Crea la cartella logos se non esiste
                         logos_dir = "logos"
                         os.makedirs(logos_dir, exist_ok=True)
-                        
-                        # Controlla e rimuovi i loghi piÃ¹ vecchi di 3 ore
-                        current_time = time.time()
-                        three_hours_in_seconds = 3 * 60 * 60
-                        
-                        for logo_file in os.listdir(logos_dir):
-                            logo_path = os.path.join(logos_dir, logo_file)
-                            if os.path.isfile(logo_path):
-                                file_age = current_time - os.path.getmtime(logo_path)
-                                if file_age > three_hours_in_seconds:
-                                    try:
-                                        os.remove(logo_path)
-                                        print(f"[🗑️] Rimosso logo obsoleto: {logo_path}")
-                                    except Exception as e:
-                                        print(f"[!] Errore nella rimozione del logo {logo_path}: {e}")
                         
                         # Verifica se l'immagine combinata esiste giÃ  e non Ã¨ obsoleta
                         output_filename = f"logos/{team1}_vs_{team2}.png"
@@ -926,7 +1000,6 @@ def eventi_m3u8_generator():
                 
                 # Se non abbiamo trovato entrambi i loghi, restituisci quello che abbiamo
                 return logo1_url or logo2_url
-
             if ':' in event_name:
                 # Usa la parte prima dei ":" per la ricerca
                 prefix_name = event_name.split(':', 1)[0].strip()
@@ -972,6 +1045,7 @@ def eventi_m3u8_generator():
             
             # Se non riusciamo a identificare le squadre e il prefisso non ha dato risultati, procedi con la ricerca normale
             print(f"[🔍] Ricerca standard per: {clean_event_name}")
+            
             
             # Se non riusciamo a identificare le squadre, procedi con la ricerca normale
             # Prepara la query di ricerca piÃ¹ specifica
@@ -1113,15 +1187,88 @@ def eventi_m3u8_generator():
         # Se non troviamo nulla, restituiamo None 
         return None
      
+    def get_iframe_url(url): 
+        try: 
+            resp = session.post(url, timeout=HTTP_TIMEOUT) 
+            resp.raise_for_status() 
+            match = re.search(r'iframe src="([^"]+)"', resp.text) 
+            return match.group(1) if match else None 
+        except requests.RequestException as e: 
+            print(f"[!] Errore richiesta iframe URL {url}: {e}") 
+            return None 
+     
+    def get_final_m3u8(iframe_url): 
+        try: 
+            parsed = re.search(r"https?://([^/]+)", iframe_url) 
+            if not parsed: 
+                print(f"[!] URL iframe non valido: {iframe_url}") 
+                return None 
+            referer_base = f"https://{parsed.group(1)}" 
+     
+            page_resp = session.post(iframe_url, timeout=HTTP_TIMEOUT) 
+            page_resp.raise_for_status() 
+            page = page_resp.text 
+     
+            key = re.search(r'var channelKey = "(.*?)"', page) 
+            ts  = re.search(r'var authTs     = "(.*?)"', page) 
+            rnd = re.search(r'var authRnd    = "(.*?)"', page) 
+            sig = re.search(r'var authSig    = "(.*?)"', page) 
+     
+            if not all([key, ts, rnd, sig]): 
+                print(f"[!] Mancano variabili auth in pagina {iframe_url}") 
+                return None 
+     
+            channel_key = key.group(1) 
+            auth_ts     = ts.group(1) 
+            auth_rnd    = rnd.group(1) 
+            auth_sig    = quote(sig.group(1), safe='') 
+     
+            auth_url = f"https://top2new.newkso.ru/auth.php?channel_id={channel_key}&ts={auth_ts}&rnd={auth_rnd}&sig={auth_sig}" 
+            session.get(auth_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) 
+     
+            lookup_url = f"{referer_base}/server_lookup.php?channel_id={quote(channel_key)}" 
+            lookup = session.get(lookup_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) 
+            lookup.raise_for_status() 
+            data = lookup.json() 
+     
+            server_key = data.get("server_key") 
+            if not server_key: 
+                print(f"[!] server_key non trovato per channel {channel_key}") 
+                return None 
+     
+            if server_key == "top1/cdn": 
+                return f"https://top1.newkso.ru/top1/cdn/{channel_key}/mono.m3u8" 
+     
+            stream_url = (f"{PROXY}https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.m3u8") 
+            return stream_url 
+     
+        except requests.RequestException as e: 
+            print(f"[!] Errore richiesta get_final_m3u8: {e}") 
+            return None 
+        except json.JSONDecodeError: 
+            print(f"[!] Errore parsing JSON da server_lookup per {iframe_url}") 
+            return None 
+     
+    def get_stream_from_channel_id(channel_id): 
+        embed_url = f"{LINK_DADDY}/embed/stream-{channel_id}.php" 
+        iframe = get_iframe_url(embed_url) 
+        if iframe: 
+            return get_final_m3u8(iframe) 
+        return None 
+     
+    def clean_category_name(name): 
+        # Rimuove tag html come </span> o simili 
+        return re.sub(r'<[^>]+>', '', name).strip() 
+     
     def extract_channels_from_json(path): 
-        keywords = {"italy", "rai", "italia", "it"} 
-        now = datetime.now() 
-      
+        keywords = {"italy", "rai", "italia", "it", "uk", "tnt", "usa", "tennis channel", "tennis stream", "la"} 
+        now = datetime.now()  # ora attuale completa (data+ora) 
+     
         with open(path, "r", encoding="utf-8") as f: 
             data = json.load(f) 
-      
+     
         categorized_channels = {} 
-      
+     
         for date_key, sections in data.items(): 
             date_part = date_key.split(" - ")[0] 
             try: 
@@ -1129,87 +1276,650 @@ def eventi_m3u8_generator():
             except Exception as e: 
                 print(f"[!] Errore parsing data '{date_part}': {e}") 
                 continue 
-      
+     
+            # filtro solo per eventi del giorno corrente 
             if date_obj != now.date(): 
                 continue 
-      
+     
             date_str = date_obj.strftime("%Y-%m-%d") 
-      
+     
             for category_raw, event_items in sections.items(): 
                 category = clean_category_name(category_raw) 
                 if category not in categorized_channels: 
                     categorized_channels[category] = [] 
-      
+     
                 for item in event_items: 
                     time_str = item.get("time", "00:00") 
                     try: 
-                        time_obj = datetime.strptime(time_str, "%H:%M") + timedelta(hours=2) 
+                        # Parse orario evento 
+                        time_obj = datetime.strptime(time_str, "%H:%M") + timedelta(hours=2)  # correzione timezone? 
+     
+                        # crea datetime completo con data evento e orario evento 
                         event_datetime = datetime.combine(date_obj, time_obj.time()) 
-      
+     
+                        # Controllo: includi solo se l'evento è iniziato da meno di 2 ore 
                         if now - event_datetime > timedelta(hours=2): 
+                            # Evento iniziato da più di 2 ore -> salto 
                             continue 
-      
+     
                         time_formatted = time_obj.strftime("%H:%M") 
                     except Exception: 
                         time_formatted = time_str 
-      
+     
                     event_title = item.get("event", "Evento") 
-      
+     
                     for ch in item.get("channels", []): 
                         channel_name = ch.get("channel_name", "") 
                         channel_id = ch.get("channel_id", "") 
-      
+     
                         words = set(re.findall(r'\b\w+\b', channel_name.lower())) 
                         if keywords.intersection(words): 
                             tvg_name = f"{event_title} ({time_formatted})" 
                             categorized_channels[category].append({ 
                                 "tvg_name": tvg_name, 
                                 "channel_name": channel_name, 
-                                "channel_id": channel_id, 
-                                "event_title": event_title  # Aggiungiamo il titolo dell'evento per la ricerca del logo 
+                                "channel_id": channel_id,
+                                "event_title": event_title  # Aggiungiamo il titolo dell'evento per la ricerca del logo
                             }) 
-      
+     
         return categorized_channels 
-      
+     
     def generate_m3u_from_schedule(json_file, output_file): 
         categorized_channels = extract_channels_from_json(json_file) 
-      
+     
         with open(output_file, "w", encoding="utf-8") as f: 
             f.write("#EXTM3U\n") 
-      
+     
             for category, channels in categorized_channels.items(): 
                 if not channels: 
                     continue 
-      
-                f.write(f'#EXTINF:-1 tvg-name="{category}" group-title="Eventi Live",--- {category} ---\nhttps://example.m3u8\n\n') 
-      
+     
+                # Spacer con nome categoria pulito e group-title "Eventi Live" 
+                f.write(f'#EXTINF:-1 tvg-name="{category}" group-title="Eventi Live",--- {category} ---\nhttps://exemple.m3u8\n\n') 
+     
                 for ch in channels: 
                     tvg_name = ch["tvg_name"] 
                     channel_id = ch["channel_id"] 
-                    event_title = ch["event_title"] 
+                    event_title = ch["event_title"]  # Otteniamo il titolo dell'evento
                     
                     # Cerca un logo per questo evento
+                    # Rimuovi l'orario dal titolo dell'evento prima di cercare il logo
                     clean_event_title = re.sub(r'\s*\(\d{1,2}:\d{2}\)\s*$', '', event_title)
-                    print(f"[🔍] Ricerca logo per: {clean_event_title}")
+                    print(f"[🔍] Ricerca logo per: {clean_event_title}") 
                     logo_url = search_logo_for_event(clean_event_title) 
-                    logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else '' 
-                    
-                    # Applica la pulizia al tvg-id
-                    tvg_id_cleaned = clean_tvg_id(clean_event_title)
-      
-                    stream_url = (f"{PROXY}{LINK_DADDY}/embed/stream-{channel_id}.php")                    
-                    f.write(f'#EXTINF:-1 tvg-id="{tvg_id_cleaned}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream_url}\n\n')
-                    print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)"))
-      
+                    logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else ''
+     
+                    try: 
+                        stream = get_stream_from_channel_id(channel_id) 
+                        if stream: 
+                            f.write(f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n') 
+                            print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)")) 
+                        else: 
+                            print(f"[✗] {tvg_name} - Nessuno stream trovato") 
+                    except Exception as e: 
+                        print(f"[!] Errore su {tvg_name}: {e}") 
+     
     if __name__ == "__main__": 
-        # Assicurati che il modulo requests sia installato 
+        generate_m3u_from_schedule(JSON_FILE, OUTPUT_FILE)
+
+# Funzione per il terzo script (eventi_m3u8_generator.py)
+def eventi_m3u8_generator():
+    # Codice del terzo script qui
+    # Aggiungi il codice del tuo script "eventi_m3u8_generator.py" in questa funzione.
+    print("Eseguendo l'eventi_m3u8_generator.py...")
+    # Il codice che avevi nello script "eventi_m3u8_generator.py" va qui, senza modifiche.
+    import json 
+    import re 
+    import requests 
+    from urllib.parse import quote 
+    from datetime import datetime, timedelta 
+    from dateutil import parser 
+    import urllib.parse
+    import os
+    from dotenv import load_dotenv
+    from PIL import Image, ImageDraw, ImageFont
+    import io
+    import time
+
+    # Carica le variabili d'ambiente dal file .env
+    load_dotenv()
+    
+    LINK_DADDY = os.getenv("LINK_DADDY", "https://daddylive.dad").strip()
+    PROXY = os.getenv("PROXYIP", "").strip()  # Proxy HLS 
+    JSON_FILE = "daddyliveSchedule.json" 
+    OUTPUT_FILE = "eventi.m3u8" 
+     
+    HEADERS = { 
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36" 
+    } 
+     
+    HTTP_TIMEOUT = 10 
+    session = requests.Session() 
+    session.headers.update(HEADERS) 
+    
+    def clean_category_name(name): 
+        # Rimuove tag html come </span> o simili 
+        return re.sub(r'<[^>]+>', '', name).strip()
+        
+    def clean_tvg_id(tvg_id):
+        """
+        Pulisce il tvg-id rimuovendo caratteri speciali, spazi e convertendo tutto in minuscolo
+        """
+        import re
+        # Rimuove caratteri speciali comuni mantenendo solo lettere e numeri
+        cleaned = re.sub(r'[^a-zA-Z0-9Ã-Ã¿]', '', tvg_id)
+        return cleaned.lower()
+     
+    def search_logo_for_event(event_name): 
+        """ 
+        Cerca un logo per l'evento specificato utilizzando un motore di ricerca 
+        Restituisce l'URL dell'immagine trovata o None se non trovata 
+        """ 
         try: 
-            import requests 
-        except ImportError: 
-            print("[!] Il modulo 'requests' non Ã¨ installato. Installalo con 'pip install requests'") 
-            exit(1) 
-             
-        generate_m3u_from_schedule(JSON_FILE, OUTPUT_FILE) 
+            # Rimuovi eventuali riferimenti all'orario dal nome dell'evento
+            # Cerca pattern come "Team A vs Team B (20:00)" e rimuovi la parte dell'orario
+            clean_event_name = re.sub(r'\s*\(\d{1,2}:\d{2}\)\s*$', '', event_name)
+            # Se c'Ã¨ un ':', prendi solo la parte dopo
+            if ':' in clean_event_name:
+                clean_event_name = clean_event_name.split(':', 1)[1].strip()
+            
+            # Verifica se l'evento contiene "vs" o "-" per identificare le due squadre
+            teams = None
+            if " vs " in clean_event_name:
+                teams = clean_event_name.split(" vs ")
+            elif " VS " in clean_event_name:
+                teams = clean_event_name.split(" VS ")
+            elif " VS. " in clean_event_name:
+                teams = clean_event_name.split(" VS. ")
+            elif " vs. " in clean_event_name:
+                teams = clean_event_name.split(" vs. ")
+            
+            # Se abbiamo identificato due squadre, cerchiamo i loghi separatamente
+            if teams and len(teams) == 2:
+                team1 = teams[0].strip()
+                team2 = teams[1].strip()
+                
+                print(f"[🔍] Ricerca logo per Team 1: {team1}")
+                logo1_url = search_team_logo(team1)
+                
+                print(f"[🔍] Ricerca logo per Team 2: {team2}")
+                logo2_url = search_team_logo(team2)
+                
+                # Se abbiamo trovato entrambi i loghi, creiamo un'immagine combinata
+                if logo1_url and logo2_url:
+                    # Scarica i loghi e l'immagine VS
+                    try:
+                        from os.path import exists, getmtime
+                        
+                        # Crea la cartella logos se non esiste
+                        logos_dir = "logos"
+                        os.makedirs(logos_dir, exist_ok=True)
+                        
+                        # Verifica se l'immagine combinata esiste giÃ  e non Ã¨ obsoleta
+                        output_filename = f"logos/{team1}_vs_{team2}.png"
+                        if exists(output_filename):
+                            file_age = current_time - os.path.getmtime(output_filename)
+                            if file_age <= three_hours_in_seconds:
+                                print(f"[✓] Utilizzo immagine combinata esistente: {output_filename}")
+                                
+                                # Carica le variabili d'ambiente per GitHub
+                                NOMEREPO = os.getenv("NOMEREPO", "").strip()
+                                NOMEGITHUB = os.getenv("NOMEGITHUB", "").strip()
+                                
+                                # Se le variabili GitHub sono disponibili, restituisci l'URL raw di GitHub
+                                if NOMEGITHUB and NOMEREPO:
+                                    github_raw_url = f"https://raw.githubusercontent.com/{NOMEGITHUB}/{NOMEREPO}/main/{output_filename}"
+                                    print(f"[✓] URL GitHub generato per logo esistente: {github_raw_url}")
+                                    return github_raw_url
+                                else:
+                                    # Altrimenti restituisci il percorso locale
+                                    return output_filename
+                        
+                        # Scarica i loghi
+                        response1 = requests.get(logo1_url, timeout=10)
+                        img1 = Image.open(io.BytesIO(response1.content))
+                        
+                        response2 = requests.get(logo2_url, timeout=10)
+                        img2 = Image.open(io.BytesIO(response2.content))
+                        
+                        # Carica l'immagine VS (assicurati che esista nella directory corrente)
+                        vs_path = "vs.png"
+                        if exists(vs_path):
+                            img_vs = Image.open(vs_path)
+                            # Converti l'immagine VS in modalitÃ  RGBA se non lo Ã¨ giÃ 
+                            if img_vs.mode != 'RGBA':
+                                img_vs = img_vs.convert('RGBA')
+                        else:
+                            # Crea un'immagine di testo "VS" se il file non esiste
+                            img_vs = Image.new('RGBA', (100, 100), (255, 255, 255, 0))
+                            from PIL import ImageDraw, ImageFont
+                            draw = ImageDraw.Draw(img_vs)
+                            try:
+                                font = ImageFont.truetype("arial.ttf", 40)
+                            except:
+                                font = ImageFont.load_default()
+                            draw.text((30, 30), "VS", fill=(255, 0, 0), font=font)
+                        
+                        # Ridimensiona le immagini a dimensioni uniformi
+                        size = (150, 150)
+                        img1 = img1.resize(size)
+                        img2 = img2.resize(size)
+                        img_vs = img_vs.resize((100, 100))
+                        
+                        # Assicurati che tutte le immagini siano in modalitÃ  RGBA per supportare la trasparenza
+                        if img1.mode != 'RGBA':
+                            img1 = img1.convert('RGBA')
+                        if img2.mode != 'RGBA':
+                            img2 = img2.convert('RGBA')
+                        
+                        # Crea una nuova immagine con spazio per entrambi i loghi e il VS
+                        combined_width = 300
+                        combined = Image.new('RGBA', (combined_width, 150), (255, 255, 255, 0))
+                        
+                        # Posiziona le immagini con il VS sovrapposto al centro
+                        # Posiziona il primo logo a sinistra
+                        combined.paste(img1, (0, 0), img1)
+                        # Posiziona il secondo logo a destra
+                        combined.paste(img2, (combined_width - 150, 0), img2)
+                        
+                        # Posiziona il VS al centro, sovrapposto ai due loghi
+                        vs_x = (combined_width - 100) // 2
+                        
+                        # Crea una copia dell'immagine combinata prima di sovrapporre il VS
+                        # Questo passaggio Ã¨ importante per preservare i dettagli dei loghi sottostanti
+                        combined_with_vs = combined.copy()
+                        combined_with_vs.paste(img_vs, (vs_x, 25), img_vs)
+                        
+                        # Usa l'immagine con VS sovrapposto
+                        combined = combined_with_vs
+                        
+                        # Salva l'immagine combinata
+                        os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+                        combined.save(output_filename)
+                        
+                        print(f"[✓] Immagine combinata creata: {output_filename}")
+                        
+                        # Carica le variabili d'ambiente per GitHub
+                        NOMEREPO = os.getenv("NOMEREPO", "").strip()
+                        NOMEGITHUB = os.getenv("NOMEGITHUB", "").strip()
+                        
+                        # Se le variabili GitHub sono disponibili, restituisci l'URL raw di GitHub
+                        if NOMEGITHUB and NOMEREPO:
+                            github_raw_url = f"https://raw.githubusercontent.com/{NOMEGITHUB}/{NOMEREPO}/main/{output_filename}"
+                            print(f"[✓] URL GitHub generato: {github_raw_url}")
+                            return github_raw_url
+                        else:
+                            # Altrimenti restituisci il percorso locale
+                            return output_filename
+                        
+                    except Exception as e:
+                        print(f"[!] Errore nella creazione dell'immagine combinata: {e}")
+                        # Se fallisce, restituisci solo il primo logo trovato
+                        return logo1_url
+                
+                # Se non abbiamo trovato entrambi i loghi, restituisci quello che abbiamo
+                return logo1_url or logo2_url
+            if ':' in event_name:
+                # Usa la parte prima dei ":" per la ricerca
+                prefix_name = event_name.split(':', 1)[0].strip()
+                print(f"[🔍] Tentativo ricerca logo con prefisso: {prefix_name}")
+                
+                # Prepara la query di ricerca con il prefisso
+                search_query = urllib.parse.quote(f"{prefix_name} logo")
+                
+                # Utilizziamo l'API di Bing Image Search con parametri migliorati
+                search_url = f"https://www.bing.com/images/search?q={search_query}&qft=+filterui:photo-transparent+filterui:aspect-square&form=IRFLTR"
+                
+                headers = { 
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+                    "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "Cache-Control": "max-age=0",
+                    "Connection": "keep-alive"
+                } 
+                
+                response = requests.get(search_url, headers=headers, timeout=10)
+                
+                if response.status_code == 200: 
+                    # Metodo 1: Cerca pattern per murl (URL dell'immagine media)
+                    patterns = [
+                        r'murl&quot;:&quot;(https?://[^&]+)&quot;',
+                        r'"murl":"(https?://[^"]+)"',
+                        r'"contentUrl":"(https?://[^"]+\.(?:png|jpg|jpeg|svg))"',
+                        r'<img[^>]+src="(https?://[^"]+\.(?:png|jpg|jpeg|svg))[^>]+class="mimg"',
+                        r'<a[^>]+class="iusc"[^>]+m=\'{"[^"]*":"[^"]*","[^"]*":"(https?://[^"]+)"'
+                    ]
+                    
+                    for pattern in patterns:
+                        matches = re.findall(pattern, response.text)
+                        if matches and len(matches) > 0:
+                            # Prendi il primo risultato che sembra un logo (preferibilmente PNG o SVG)
+                            for match in matches:
+                                if '.png' in match.lower() or '.svg' in match.lower():
+                                    print(f"[✓] Logo trovato con prefisso: {match}")
+                                    return match
+                            # Se non troviamo PNG o SVG, prendi il primo risultato
+                            print(f"[✓] Logo trovato con prefisso: {matches[0]}")
+                            return matches[0]
+            
+            # Se non riusciamo a identificare le squadre e il prefisso non ha dato risultati, procedi con la ricerca normale
+            print(f"[🔍] Ricerca standard per: {clean_event_name}")
+            
+            
+            # Se non riusciamo a identificare le squadre, procedi con la ricerca normale
+            # Prepara la query di ricerca piÃ¹ specifica
+            search_query = urllib.parse.quote(f"{clean_event_name} logo")
+            
+            # Utilizziamo l'API di Bing Image Search con parametri migliorati
+            search_url = f"https://www.bing.com/images/search?q={search_query}&qft=+filterui:photo-transparent+filterui:aspect-square&form=IRFLTR"
+            
+            headers = { 
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Cache-Control": "max-age=0",
+                "Connection": "keep-alive"
+            } 
+            
+            response = requests.get(search_url, headers=headers, timeout=10)
+            
+            if response.status_code == 200: 
+                # Metodo 1: Cerca pattern per murl (URL dell'immagine media)
+                patterns = [
+                    r'murl&quot;:&quot;(https?://[^&]+)&quot;',
+                    r'"murl":"(https?://[^"]+)"',
+                    r'"contentUrl":"(https?://[^"]+\.(?:png|jpg|jpeg|svg))"',
+                    r'<img[^>]+src="(https?://[^"]+\.(?:png|jpg|jpeg|svg))[^>]+class="mimg"',
+                    r'<a[^>]+class="iusc"[^>]+m=\'{"[^"]*":"[^"]*","[^"]*":"(https?://[^"]+)"'
+                ]
+                
+                for pattern in patterns:
+                    matches = re.findall(pattern, response.text)
+                    if matches and len(matches) > 0:
+                        # Prendi il primo risultato che sembra un logo (preferibilmente PNG o SVG)
+                        for match in matches:
+                            if '.png' in match.lower() or '.svg' in match.lower():
+                                return match
+                        # Se non troviamo PNG o SVG, prendi il primo risultato
+                        return matches[0]
+                
+                # Metodo alternativo: cerca JSON incorporato nella pagina
+                json_match = re.search(r'var\s+IG\s*=\s*(\{.+?\});\s*', response.text)
+                if json_match:
+                    try:
+                        # Estrai e analizza il JSON
+                        json_str = json_match.group(1)
+                        # Pulisci il JSON se necessario
+                        json_str = re.sub(r'([{,])\s*([a-zA-Z0-9_]+):', r'\1"\2":', json_str)
+                        data = json.loads(json_str)
+                        
+                        # Cerca URL di immagini nel JSON
+                        if 'images' in data and len(data['images']) > 0:
+                            for img in data['images']:
+                                if 'murl' in img:
+                                    return img['murl']
+                    except Exception as e:
+                        print(f"[!] Errore nell'analisi JSON: {e}")
+                
+                print(f"[!] Nessun logo trovato per '{clean_event_name}' con i pattern standard")
+                
+                # Ultimo tentativo: cerca qualsiasi URL di immagine nella pagina
+                any_img = re.search(r'(https?://[^"\']+\.(?:png|jpg|jpeg|svg|webp))', response.text)
+                if any_img:
+                    return any_img.group(1)
+                    
+        except Exception as e: 
+            print(f"[!] Errore nella ricerca del logo per '{event_name}': {e}") 
+        
+        # Se non troviamo nulla, restituiamo None 
+        return None
+
+    def search_team_logo(team_name):
+        """
+        Funzione dedicata alla ricerca del logo di una singola squadra
+        """
+        try:
+            # Prepara la query di ricerca specifica per la squadra
+            search_query = urllib.parse.quote(f"{team_name} logo")
+            
+            # Utilizziamo l'API di Bing Image Search con parametri migliorati
+            search_url = f"https://www.bing.com/images/search?q={search_query}&qft=+filterui:photo-transparent+filterui:aspect-square&form=IRFLTR"
+            
+            headers = { 
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Cache-Control": "max-age=0",
+                "Connection": "keep-alive"
+            } 
+            
+            response = requests.get(search_url, headers=headers, timeout=10)
+            
+            if response.status_code == 200: 
+                # Metodo 1: Cerca pattern per murl (URL dell'immagine media)
+                patterns = [
+                    r'murl&quot;:&quot;(https?://[^&]+)&quot;',
+                    r'"murl":"(https?://[^"]+)"',
+                    r'"contentUrl":"(https?://[^"]+\.(?:png|jpg|jpeg|svg))"',
+                    r'<img[^>]+src="(https?://[^"]+\.(?:png|jpg|jpeg|svg))[^>]+class="mimg"',
+                    r'<a[^>]+class="iusc"[^>]+m=\'{"[^"]*":"[^"]*","[^"]*":"(https?://[^"]+)"'
+                ]
+                
+                for pattern in patterns:
+                    matches = re.findall(pattern, response.text)
+                    if matches and len(matches) > 0:
+                        # Prendi il primo risultato che sembra un logo (preferibilmente PNG o SVG)
+                        for match in matches:
+                            if '.png' in match.lower() or '.svg' in match.lower():
+                                return match
+                        # Se non troviamo PNG o SVG, prendi il primo risultato
+                        return matches[0]
+                
+                # Metodo alternativo: cerca JSON incorporato nella pagina
+                json_match = re.search(r'var\s+IG\s*=\s*(\{.+?\});\s*', response.text)
+                if json_match:
+                    try:
+                        # Estrai e analizza il JSON
+                        json_str = json_match.group(1)
+                        # Pulisci il JSON se necessario
+                        json_str = re.sub(r'([{,])\s*([a-zA-Z0-9_]+):', r'\1"\2":', json_str)
+                        data = json.loads(json_str)
+                        
+                        # Cerca URL di immagini nel JSON
+                        if 'images' in data and len(data['images']) > 0:
+                            for img in data['images']:
+                                if 'murl' in img:
+                                    return img['murl']
+                    except Exception as e:
+                        print(f"[!] Errore nell'analisi JSON: {e}")
+                
+                print(f"[!] Nessun logo trovato per '{team_name}' con i pattern standard")
+                
+                # Ultimo tentativo: cerca qualsiasi URL di immagine nella pagina
+                any_img = re.search(r'(https?://[^"\']+\.(?:png|jpg|jpeg|svg|webp))', response.text)
+                if any_img:
+                    return any_img.group(1)
+                    
+        except Exception as e: 
+            print(f"[!] Errore nella ricerca del logo per '{team_name}': {e}") 
+        
+        # Se non troviamo nulla, restituiamo None 
+        return None
+     
+    def get_iframe_url(url): 
+        try: 
+            resp = session.post(url, timeout=HTTP_TIMEOUT) 
+            resp.raise_for_status() 
+            match = re.search(r'iframe src="([^"]+)"', resp.text) 
+            return match.group(1) if match else None 
+        except requests.RequestException as e: 
+            print(f"[!] Errore richiesta iframe URL {url}: {e}") 
+            return None 
+     
+    def get_final_m3u8(iframe_url): 
+        try: 
+            parsed = re.search(r"https?://([^/]+)", iframe_url) 
+            if not parsed: 
+                print(f"[!] URL iframe non valido: {iframe_url}") 
+                return None 
+            referer_base = f"https://{parsed.group(1)}" 
+     
+            page_resp = session.post(iframe_url, timeout=HTTP_TIMEOUT) 
+            page_resp.raise_for_status() 
+            page = page_resp.text 
+     
+            key = re.search(r'var channelKey = "(.*?)"', page) 
+            ts  = re.search(r'var authTs     = "(.*?)"', page) 
+            rnd = re.search(r'var authRnd    = "(.*?)"', page) 
+            sig = re.search(r'var authSig    = "(.*?)"', page) 
+     
+            if not all([key, ts, rnd, sig]): 
+                print(f"[!] Mancano variabili auth in pagina {iframe_url}") 
+                return None 
+     
+            channel_key = key.group(1) 
+            auth_ts     = ts.group(1) 
+            auth_rnd    = rnd.group(1) 
+            auth_sig    = quote(sig.group(1), safe='') 
+     
+            auth_url = f"https://top2new.newkso.ru/auth.php?channel_id={channel_key}&ts={auth_ts}&rnd={auth_rnd}&sig={auth_sig}" 
+            session.get(auth_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) 
+     
+            lookup_url = f"{referer_base}/server_lookup.php?channel_id={quote(channel_key)}" 
+            lookup = session.get(lookup_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) 
+            lookup.raise_for_status() 
+            data = lookup.json() 
+     
+            server_key = data.get("server_key") 
+            if not server_key: 
+                print(f"[!] server_key non trovato per channel {channel_key}") 
+                return None 
+     
+            if server_key == "top1/cdn": 
+                return f"https://top1.newkso.ru/top1/cdn/{channel_key}/mono.m3u8" 
+     
+            stream_url = (f"{PROXY}https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.m3u8") 
+            return stream_url 
+     
+        except requests.RequestException as e: 
+            print(f"[!] Errore richiesta get_final_m3u8: {e}") 
+            return None 
+        except json.JSONDecodeError: 
+            print(f"[!] Errore parsing JSON da server_lookup per {iframe_url}") 
+            return None 
+     
+    def get_stream_from_channel_id(channel_id): 
+        embed_url = f"{LINK_DADDY}/embed/stream-{channel_id}.php" 
+        iframe = get_iframe_url(embed_url) 
+        if iframe: 
+            return get_final_m3u8(iframe) 
+        return None 
+     
+    def clean_category_name(name): 
+        # Rimuove tag html come </span> o simili 
+        return re.sub(r'<[^>]+>', '', name).strip() 
+     
+    def extract_channels_from_json(path): 
+        keywords = {"italy", "rai", "italia", "it"} 
+        now = datetime.now()  # ora attuale completa (data+ora) 
+     
+        with open(path, "r", encoding="utf-8") as f: 
+            data = json.load(f) 
+     
+        categorized_channels = {} 
+     
+        for date_key, sections in data.items(): 
+            date_part = date_key.split(" - ")[0] 
+            try: 
+                date_obj = parser.parse(date_part, fuzzy=True).date() 
+            except Exception as e: 
+                print(f"[!] Errore parsing data '{date_part}': {e}") 
+                continue 
+     
+            # filtro solo per eventi del giorno corrente 
+            if date_obj != now.date(): 
+                continue 
+     
+            date_str = date_obj.strftime("%Y-%m-%d") 
+     
+            for category_raw, event_items in sections.items(): 
+                category = clean_category_name(category_raw) 
+                if category not in categorized_channels: 
+                    categorized_channels[category] = [] 
+     
+                for item in event_items: 
+                    time_str = item.get("time", "00:00") 
+                    try: 
+                        # Parse orario evento 
+                        time_obj = datetime.strptime(time_str, "%H:%M") + timedelta(hours=2)  # correzione timezone? 
+     
+                        # crea datetime completo con data evento e orario evento 
+                        event_datetime = datetime.combine(date_obj, time_obj.time()) 
+     
+                        # Controllo: includi solo se l'evento è iniziato da meno di 2 ore 
+                        if now - event_datetime > timedelta(hours=2): 
+                            # Evento iniziato da più di 2 ore -> salto 
+                            continue 
+     
+                        time_formatted = time_obj.strftime("%H:%M") 
+                    except Exception: 
+                        time_formatted = time_str 
+     
+                    event_title = item.get("event", "Evento") 
+     
+                    for ch in item.get("channels", []): 
+                        channel_name = ch.get("channel_name", "") 
+                        channel_id = ch.get("channel_id", "") 
+     
+                        words = set(re.findall(r'\b\w+\b', channel_name.lower())) 
+                        if keywords.intersection(words): 
+                            tvg_name = f"{event_title} ({time_formatted})" 
+                            categorized_channels[category].append({ 
+                                "tvg_name": tvg_name, 
+                                "channel_name": channel_name, 
+                                "channel_id": channel_id,
+                                "event_title": event_title  # Aggiungiamo il titolo dell'evento per la ricerca del logo
+                            }) 
+     
+        return categorized_channels 
+     
+    def generate_m3u_from_schedule(json_file, output_file): 
+        categorized_channels = extract_channels_from_json(json_file) 
+     
+        with open(output_file, "w", encoding="utf-8") as f: 
+            f.write("#EXTM3U\n") 
+     
+            for category, channels in categorized_channels.items(): 
+                if not channels: 
+                    continue 
+     
+                # Spacer con nome categoria pulito e group-title "Eventi Live" 
+                f.write(f'#EXTINF:-1 tvg-name="{category}" group-title="Eventi Live",--- {category} ---\nhttps://exemple.m3u8\n\n') 
+     
+                for ch in channels: 
+                    tvg_name = ch["tvg_name"] 
+                    channel_id = ch["channel_id"] 
+                    event_title = ch["event_title"]  # Otteniamo il titolo dell'evento
+                    
+                    # Cerca un logo per questo evento
+                    # Rimuovi l'orario dal titolo dell'evento prima di cercare il logo
+                    clean_event_title = re.sub(r'\s*\(\d{1,2}:\d{2}\)\s*$', '', event_title)
+                    print(f"[🔍] Ricerca logo per: {clean_event_title}") 
+                    logo_url = search_logo_for_event(clean_event_title) 
+                    logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else ''
+     
+                    try: 
+                        stream = get_stream_from_channel_id(channel_id) 
+                        if stream: 
+                            f.write(f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n') 
+                            print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)")) 
+                        else: 
+                            print(f"[✗] {tvg_name} - Nessuno stream trovato") 
+                    except Exception as e: 
+                        print(f"[!] Errore su {tvg_name}: {e}") 
+     
+    if __name__ == "__main__": 
+        generate_m3u_from_schedule(JSON_FILE, OUTPUT_FILE)
     
 # Funzione per il quarto script (schedule_extractor.py)
 def schedule_extractor():
@@ -2031,51 +2741,19 @@ def vavoo_italy_channels():
 
     def get_manual_channels():
         return [
-            {"name": "EUROSPORT 1 (D)", "url": f"{LINK_DADDY}/embed/stream-878.php", "tvg_id": "eurosport.1.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/spain/eurosport-1-es.png", "category": "Sport"},
-            {"name": "EUROSPORT 2 (D)", "url": f"{LINK_DADDY}/embed/stream-879.php", "tvg_id": "eurosport.2.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/spain/eurosport-2-es.png", "category": "Sport"},
-            {"name": "ITALIA 1 (D)", "url": f"{LINK_DADDY}/embed/stream-854.php", "tvg_id": "italia.1.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/italia1-it.png", "category": "Mediaset"},
-            {"name": "LA7 (D)", "url": f"{LINK_DADDY}/embed/stream-855.php", "tvg_id": "la7.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/la7-it.png", "category": "Altro"},
-            {"name": "LA7D (D)", "url": f"{LINK_DADDY}/embed/stream-856.php", "tvg_id": "la7.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/la7-it.png", "category": "Altro"},
-            {"name": "RAI 1 (D)", "url": f"{LINK_DADDY}/embed/stream-850.php", "tvg_id": "rai1.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/rai-1-it.png", "category": "Rai"},
-            {"name": "RAI 2 (D)", "url": f"{LINK_DADDY}/embed/stream-851.php", "tvg_id": "rai2.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/rai-2-it.png", "category": "Rai"},
-            {"name": "RAI 3 (D)", "url": f"{LINK_DADDY}/embed/stream-852.php", "tvg_id": "rai3.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/rai-3-it.png", "category": "Rai"},
-            {"name": "RAI 3 (D)", "url": f"{LINK_DADDY}/embed/stream-853.php", "tvg_id": "rai3.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/rai-3-it.png", "category": "Rai"},
-            {"name": "RAI SPORT (D)", "url": f"{LINK_DADDY}/embed/stream-882.php", "tvg_id": "raisport.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/rai-sport-it.png", "category": "Sport"},
-            {"name": "RAI PREMIUM (D)", "url": f"{LINK_DADDY}/embed/stream-858.php", "tvg_id": "raipremium.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/rai-premium-it.png", "category": "Rai"},
-            {"name": "SKY SPORT GOLF (D)", "url": f"{LINK_DADDY}/embed/stream-574.php", "tvg_id": "sky.sport.golf.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-sport-golf-it.png", "category": "Sport"},
-            {"name": "SKY SPORT MOTOGP (D)", "url": f"{LINK_DADDY}/embed/stream-575.php", "tvg_id": "sky.sport.motogp.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-sport-motogp-it.png", "category": "Sport"},
-            {"name": "SKY SPORT TENNIS (D)", "url": f"{LINK_DADDY}/embed/stream-576.php", "tvg_id": "sky.sport.tennis.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-sport-tennis-it.png", "category": "Sport"},
-            {"name": "SKY SPORT F1 (D)", "url": f"{LINK_DADDY}/embed/stream-577.php", "tvg_id": "sky.sport.f1.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-sport-f1-it.png", "category": "Sport"},
-            {"name": "SKY SPORT FOOTBALL (D)", "url": f"{LINK_DADDY}/embed/stream-460.php", "tvg_id": "sky.sport.max.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-sport-football-it.png", "category": "Sport"},
-            {"name": "SKY SPORT UNO (D)", "url": f"{LINK_DADDY}/embed/stream-461.php", "tvg_id": "sky.sport.uno.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-sport-uno-it.png", "category": "Sport"},
-            {"name": "SKY SPORT ARENA (D)", "url": f"{LINK_DADDY}/embed/stream-462.php", "tvg_id": "sky.sport.arena.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-sport-arena-it.png", "category": "Sport"},
-            {"name": "SKY UNO (D)", "url": f"{LINK_DADDY}/embed/stream-881.php", "tvg_id": "sky.uno.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-uno-it.png", "category": "Altro"},
-            {"name": "SKY CINEMA COLLECTION (D)", "url": f"{LINK_DADDY}/embed/stream-859.php", "tvg_id": "skycinemacollectionhd.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-collection-it.png", "category": "Film & Serie TV"},
-            {"name": "SKY CINEMA UNO (D)", "url": f"{LINK_DADDY}/embed/stream-860.php", "tvg_id": "sky.cinema.uno.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-uno-it.png", "category": "Film & Serie TV"},
-            {"name": "SKY CINEMA ACTION (D)", "url": f"{LINK_DADDY}/embed/stream-861.php", "tvg_id": "sky.cinema.action.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-action-it.png", "category": "Film & Serie TV"},
-            {"name": "SLY CINEMA COMEDY (D)", "url": f"{LINK_DADDY}/embed/stream-862.php", "tvg_id": "sky.cinema.comedy.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-comedy-it.png", "category": "Film & Serie TV"},
-            {"name": "SKY CINEMA UNO +24 (D)", "url": f"{LINK_DADDY}/embed/stream-863.php", "tvg_id": "sky.cinema.uno.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-uno-it.png", "category": "Film & Serie TV"},
-            {"name": "SKY CINEMA ROMANCE (D)", "url": f"{LINK_DADDY}/embed/stream-864.php", "tvg_id": "sky.cinema.romance.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-romance-it.png", "category": "Film & Serie TV"},
-            {"name": "SKY CINEMA FAMILY (D)", "url": f"{LINK_DADDY}/embed/stream-865.php", "tvg_id": "sky.cinema.family.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-family-it.png", "category": "Film & Serie TV"},
-            {"name": "SKY CINEMA DUE +24 (D)", "url": f"{LINK_DADDY}/embed/stream-866.php", "tvg_id": "sky.cinema.due.+24.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-due-plus24-it.png", "category": "Film & Serie TV"},
-            {"name": "SKY CINEMA DRAMA (D)", "url": f"{LINK_DADDY}/embed/stream-867.php", "tvg_id": "sky.cinema.drama.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-drama-it.png", "category": "Film & Serie TV"},
-            {"name": "SKY CINEMA SUSPENSE (D)", "url": f"{LINK_DADDY}/embed/stream-868.php", "tvg_id": "sky.cinema.suspense.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-cinema-suspense-it.png", "category": "Film & Serie TV"},
-            {"name": "SKY SPORT 24 (D)", "url": f"{LINK_DADDY}/embed/stream-869.php", "tvg_id": "sky.sport24.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-sport-24-it.png", "category": "Sport"},
-            {"name": "SKY SPORT CALCIO (D)", "url": f"{LINK_DADDY}/embed/stream-870.php", "tvg_id": "sky.sport.calcio.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-sport-calcio-it.png", "category": "Sport"},
-            {"name": "SKY SPORT 251 (D)", "url": f"{LINK_DADDY}/embed/stream-871.php", "tvg_id": "sky.sport..251.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
-            {"name": "SKY SPORT 252 (D)", "url": f"{LINK_DADDY}/embed/stream-872.php", "tvg_id": "sky.sport..252.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
-            {"name": "SKY SPORT 253 (D)", "url": f"{LINK_DADDY}/embed/stream-873.php", "tvg_id": "sky.sport..253.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
-            {"name": "SKY SPORT 254 (D)", "url": f"{LINK_DADDY}/embed/stream-874.php", "tvg_id": "sky.sport..254.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
-            {"name": "SKY SPORT 255 (D)", "url": f"{LINK_DADDY}/embed/stream-875.php", "tvg_id": "sky.sport..255.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
-            {"name": "SKY SPORT 256 (D)", "url": f"{LINK_DADDY}/embed/stream-876.php", "tvg_id": "sky.sport..256.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
+            {"name": "SKY UNO (D)", "url": f"https://windnew.newkso.ru/wind/premium881/mono.m3u8", "tvg_id": "sky.uno.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-uno-it.png", "category": "Altro"},
+            {"name": "SKY SPORT 251 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky251/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..251.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
+            {"name": "SKY SPORT 252 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky252/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..252.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
+            {"name": "SKY SPORT 253 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky253/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..253.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
+            {"name": "SKY SPORT 254 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky254/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..254.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
+            {"name": "SKY SPORT 255 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky255/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..255.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
+            {"name": "SKY SPORT 256 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky256/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..256.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
             {"name": "SKY SPORT 257 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky257/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..257.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
             {"name": "SKY SPORT 258 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky258/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..258.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
             {"name": "SKY SPORT 259 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky259/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..259.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
             {"name": "SKY SPORT 260 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky260/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..260.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
             {"name": "SKY SPORT 261 (SS)", "url": f"https%3A//hls.kangal.icu/hls/sky261/index.m3u8&h_user-agent=Mozilla/5.0%20%28Windows%20NT%2010.0%3B%20Win64%3B%20x64%29%20AppleWebKit/537.36%20%28KHTML%2C%20like%20Gecko%29%20Chrome/133.0.0.0%20Safari/537.36&h_referer=https%3A//skystreaming.stream/&h_origin=https%3A//skystreaming.stream", "tvg_id": "sky.sport..261.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/sky-sport-hd-it.png", "category": "Sport"},
-            {"name": "SKY SERIE (D)", "url": f"{LINK_DADDY}/embed/stream-880.php", "tvg_id": "sky.serie.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/sky-serie-it.png", "category": "Film & Serie TV"},
-            {"name": "20 MEDIASET (D)", "url": f"{LINK_DADDY}/embed/stream-857.php", "tvg_id": "20mediasethd.it", "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/italy/20-it.png", "category": "Mediaset"},
-            {"name": "DAZN 1 (D)", "url": f"{LINK_DADDY}/embed/stream-877.php", "tvg_id": "dazn.1.it.it", "logo": "https://upload.wikimedia.org/wikipedia/commons/d/d6/Dazn-logo.png", "category": "Sport"}
+            {"name": "DAZN 1 (D)", "url": f"https://nfsnew.newkso.ru/nfs/premium877/mono.m3u8", "tvg_id": "dazn.1.it.it", "logo": "https://upload.wikimedia.org/wikipedia/commons/d/d6/Dazn-logo.png", "category": "Sport"}
         ]
 
     def save_m3u8(organized_channels):
