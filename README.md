@@ -90,7 +90,9 @@ Se utilizzi **tvproxy**, hai la possibilità di lasciare il campo `PROXYIP` vuot
 
 ### 🔁 Come proxare la lista completa?
 
-Utilizza il seguente URL: `http://:7860/proxy?url=<URL_LISTA_M3U>`
+Utilizza il seguente URL: `http://<server-ip>/proxy?url=<URL_LISTA_M3U>`
+
+questo sara il link della tua lista da mettere nelle app iptv!
 
 Sostituisci:
 
