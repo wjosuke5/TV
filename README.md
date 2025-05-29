@@ -35,22 +35,22 @@ Per utilizzare questa lista IPTV su Stremio, dovrai usare l'addon **OMG Premium 
 
 ### 🚀 Installazione OMG Premium TV
 
-1. **Usa questo fork specifico**: [https://github.com/nzo66/OMG-Premium-TV](https://github.com/nzo66/OMG-Premium-TV)
-2. **Deploy su Docker** tramite Hugging Face o VPS seguendo la guida nel repository
+1. **Usa questo fork specifico**: [https://github.com/nzo66/OMG-Premium-TV](https://github.com/nzo66/OMG-Premium-TV)  
+2. **Deploy su Docker** tramite Hugging Face o VPS seguendo la guida nel repository  
 3. **Configura l'addon** inserendo:
-   - **URL M3U**: Il link della lista M3U sopra indicato
-   - **URL EPG**: Il link dell'EPG XML sopra indicato
+   - **URL M3U**: Il link della lista M3U sopra indicato  
+   - **URL EPG**: Il link dell'EPG XML sopra indicato  
 4. **Installa su Stremio** cliccando sul pulsante "INSTALLA SU STREMIO"
 
 ### ✨ Funzionalità disponibili
 
 Con OMG Premium TV potrai sfruttare:
-- **Supporto playlist M3U/M3U8** complete
-- **EPG integrata** con informazioni sui programmi
-- **Filtri per genere** e ricerca canali
-- **Proxy per maggiore compatibilità** 
-- **Resolver Python** per stream speciali
-- **Backup e ripristino** della configurazione
+- Supporto playlist **M3U/M3U8** complete  
+- **EPG integrata** con informazioni sui programmi  
+- **Filtri per genere** e ricerca canali  
+- **Proxy per maggiore compatibilità**  
+- **Resolver Python** per stream speciali  
+- **Backup e ripristino** della configurazione  
 
 ---
 
@@ -81,17 +81,37 @@ Avvia creando un fork della repository proxy.
 
 ---
 
+## 🔒 Proxy sicuro con tvproxy
+
+Se utilizzi **tvproxy**, hai la possibilità di lasciare il campo `PROXYIP` vuoto nel file `.env` e proxare direttamente la lista per una maggiore sicurezza.
+
+📘 **Per maggiori informazioni, consulta il repo:**  
+👉 [https://github.com/nzo66/tvproxy](https://github.com/nzo66/tvproxy)
+
+### 🔁 Come proxare la lista completa?
+
+Utilizza il seguente URL: http://:7860/proxy?url=<URL_LISTA_M3U>
+
+Sostituisci:
+
+- `<server-ip>` con l'indirizzo IP del tuo server  
+- `<URL_LISTA_M3U>` con l'URL effettivo della tua lista M3U (es. quello GitHub)
+
+Questo ti permetterà di servire la lista M3U attraverso il tuo proxy personale in modo sicuro e performante.
+
+---
+
 ## 🚀 Esecuzione automatica con GitHub Actions
 
 Dopo le modifiche:
 
 1. Vai sulla sezione **Actions** della tua repo  
 2. Avvia manualmente lo script  
-3. Assicurati che **GitHub Actions sia abilitato** nella repository
+3. Assicurati che **GitHub Actions sia abilitato** nella repository  
 
 ---
 
 ## 🤝 Hai bisogno di aiuto?
 
 Apri una **issue** o proponi un miglioramento con una **pull request**.  
-Contribuire è sempre benvenuto
+Contribuire è sempre benvenuto!
