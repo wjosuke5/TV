@@ -708,7 +708,7 @@ def eventi_m3u8_generator_world():
                     # Applica la pulizia al tvg-id
                     tvg_id_cleaned = clean_tvg_id(clean_event_title)
       
-                    stream_url = (f"{PROXY}/proxy/m3u?url={LINK_DADDY}/embed/stream-{channel_id}.php")                    
+                    stream_url = (f"{PROXY}{LINK_DADDY}/embed/stream-{channel_id}.php")                    
                     f.write(f'#EXTINF:-1 tvg-id="{tvg_id_cleaned}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream_url}\n\n')
                     print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)"))
       
@@ -1197,7 +1197,7 @@ def eventi_m3u8_generator():
                     # Applica la pulizia al tvg-id
                     tvg_id_cleaned = clean_tvg_id(clean_event_title)
       
-                    stream_url = (f"{PROXY}/proxy/m3u?url={LINK_DADDY}/embed/stream-{channel_id}.php")                    
+                    stream_url = (f"{PROXY}{LINK_DADDY}/embed/stream-{channel_id}.php")                    
                     f.write(f'#EXTINF:-1 tvg-id="{tvg_id_cleaned}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream_url}\n\n')
                     print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)"))
       
@@ -2088,7 +2088,7 @@ def vavoo_italy_channels():
                 for ch in channels:
                     tvg_name_cleaned = re.sub(r"\s*\(.*?\)", "", ch["name"])
                     f.write(f'#EXTINF:-1 tvg-id="{ch.get("tvg_id", "")}" tvg-name="{tvg_name_cleaned}" tvg-logo="{ch.get("logo", DEFAULT_TVG_ICON)}" group-title="{category}", {ch["name"]}\n')
-                    f.write(f"{PROXY}/proxy/m3u?url={ch['url']}\n\n")
+                    f.write(f"{PROXY}{ch['url']}\n\n")
 
     def main():
         epg_root = fetch_epg(EPG_FILE)
@@ -2191,7 +2191,7 @@ def world_channels_generator():
     
                 for name, url in grouped_channels[country]:
                     f.write(f'#EXTINF:-1 tvg-name="{name}" group-title="{country}", {name}\n')
-                    f.write(f"{PROXY}/proxy/m3u?url={url}\n\n")
+                    f.write(f"{PROXY}{url}\n\n")
     
     # Funzione principale
     def main():
