@@ -2310,8 +2310,7 @@ def italy_channels():
                     # Altri canali (Vavoo, manuali) necessitano del wrapper proxy/hls se MFP_IP è impostato
                     if MFP_IP and not channel_name.upper().endswith(" (D)"):
                         # Canale Vavoo o manuale, applica il formato proxy/hls
-                        encoded_url = urllib.parse.quote(raw_channel_url, safe='')
-                        final_url_to_write = f"{MFP_IP.rstrip('/')}/proxy/hls/manifest.m3u8?api_password={MFP_PASSWORD}&d={encoded_url}"
+                        final_url_to_write = f"{MFP_IP.rstrip('/')}/proxy/hls/manifest.m3u8?api_password={MFP_PASSWORD}&d={final_url}"
                     else:
                         # Canale Daddylive (URL già formattato o None) o MFP_IP non impostato (usa URL grezzo)
                         final_url_to_write = raw_channel_url
@@ -2527,8 +2526,7 @@ def world_channels_generator():
                 for name, url in grouped_channels[country]:
                     final_url_to_write = url
                     if MFP_IP:
-                        encoded_url = urllib.parse.quote(url, safe='')
-                        final_url_to_write = f"{MFP_IP.rstrip('/')}/proxy/hls/manifest.m3u8?api_password={MFP_PASSWORD}&d={encoded_url}"
+                        final_url_to_write = f"{MFP_IP.rstrip('/')}/proxy/hls/manifest.m3u8?api_password={MFP_PASSWORD}&d={final_url}"
                     else:
                         # Se MFP_IP non è settato, usa l'URL originale
                         final_url_to_write = url
