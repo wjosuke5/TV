@@ -770,13 +770,14 @@ def eventi_m3u8_generator_world():
                     # Rimuovi l'orario dal titolo dell'evento prima di cercare il logo
                     clean_event_title = re.sub(r'\s*\(\d{1,2}:\d{2}\)\s*$', '', event_title)
                     print(f"[🔍] Ricerca logo per: {clean_event_title}") 
-                    logo_url = search_logo_for_event(clean_event_title) 
+                    logo_url = search_logo_for_event(clean_event_title)
                     logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else ''
      
                     try: 
                         stream = get_stream_from_channel_id(channel_id) 
                         if stream: 
-                            f.write(f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n') 
+                            cleaned_event_id = clean_tvg_id(event_title) # Usa event_title per tvg-id
+                            f.write(f'#EXTINF:-1 tvg-id="{cleaned_event_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n')
                             print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)")) 
                         else: 
                             print(f"[✗] {tvg_name} - Nessuno stream trovato") 
@@ -1320,13 +1321,14 @@ def eventi_m3u8_generator_world():
                     # Rimuovi l'orario dal titolo dell'evento prima di cercare il logo
                     clean_event_title = re.sub(r'\s*\(\d{1,2}:\d{2}\)\s*$', '', event_title)
                     print(f"[🔍] Ricerca logo per: {clean_event_title}") 
-                    logo_url = search_logo_for_event(clean_event_title) 
+                    logo_url = search_logo_for_event(clean_event_title)
                     logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else ''
      
                     try: 
                         stream = get_stream_from_channel_id(channel_id) 
                         if stream: 
-                            f.write(f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n') 
+                            cleaned_event_id = clean_tvg_id(event_title) # Usa event_title per tvg-id
+                            f.write(f'#EXTINF:-1 tvg-id="{cleaned_event_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n')
                             print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)")) 
                         else: 
                             print(f"[✗] {tvg_name} - Nessuno stream trovato") 
@@ -1869,13 +1871,14 @@ def eventi_m3u8_generator():
                     # Rimuovi l'orario dal titolo dell'evento prima di cercare il logo
                     clean_event_title = re.sub(r'\s*\(\d{1,2}:\d{2}\)\s*$', '', event_title)
                     print(f"[🔍] Ricerca logo per: {clean_event_title}") 
-                    logo_url = search_logo_for_event(clean_event_title) 
+                    logo_url = search_logo_for_event(clean_event_title)
                     logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else ''
      
                     try: 
                         stream = get_stream_from_channel_id(channel_id) 
                         if stream: 
-                            f.write(f'#EXTINF:-1 tvg-id="{channel_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n') 
+                            cleaned_event_id = clean_tvg_id(event_title) # Usa event_title per tvg-id
+                            f.write(f'#EXTINF:-1 tvg-id="{cleaned_event_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n')
                             print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)")) 
                         else: 
                             print(f"[✗] {tvg_name} - Nessuno stream trovato") 
