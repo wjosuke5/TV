@@ -243,18 +243,16 @@ def eventi_m3u8_generator_world():
     # Aggiungi il codice del tuo script "eventi_m3u8_generator.py" in questa funzione.
     print("Eseguendo l'eventi_m3u8_generator.py...")
     # Il codice che avevi nello script "eventi_m3u8_generator.py" va qui, senza modifiche.
-    import json 
-    import re 
-    import requests 
-    from urllib.parse import quote 
-    from datetime import datetime, timedelta 
-    from dateutil import parser 
-    import urllib.parse
+    import json
+    import re
+    import requests
+    import urllib.parse # Consolidato
+    from datetime import datetime, timedelta
+    from dateutil import parser
     import os
     from dotenv import load_dotenv
     from PIL import Image, ImageDraw, ImageFont
-    import io
-    import urllib.parse # Aggiunto per encoding URL
+    import io # Aggiunto per encoding URL
     import time
     
     # Carica le variabili d'ambiente dal file .env
@@ -285,7 +283,7 @@ def eventi_m3u8_generator_world():
         """
         Pulisce il tvg-id rimuovendo caratteri speciali, spazi e convertendo tutto in minuscolo
         """
-        import re
+        # import re # 're' è già importato a livello di funzione
         # Rimuove caratteri speciali comuni mantenendo solo lettere e numeri
         cleaned = re.sub(r'[^a-zA-Z0-9Ã-Ã¿]', '', tvg_id)
         return cleaned.lower()
@@ -681,13 +679,14 @@ def eventi_m3u8_generator_world():
             print(f"[!] MFP_IP non impostato. Impossibile generare l'URL extractor per il canale Daddylive {channel_id}.")
             return None
      
-    def clean_category_name(name): 
-        # Rimuove tag html come </span> o simili 
-        return re.sub(r'<[^>]+>', '', name).strip() 
+    # def clean_category_name(name): # Rimossa definizione duplicata
+    #     # Rimuove tag html come </span> o simili
+    #     return re.sub(r'<[^>]+>', '', name).strip()
      
     def extract_channels_from_json(path): 
         keywords = {"italy", "rai", "italia", "it", "uk", "tnt", "usa", "tennis channel", "tennis stream", "la"} 
         now = datetime.now()  # ora attuale completa (data+ora) 
+        yesterday_date = (now - timedelta(days=1)).date() # Data di ieri
      
         with open(path, "r", encoding="utf-8") as f: 
             data = json.load(f) 
@@ -701,12 +700,22 @@ def eventi_m3u8_generator_world():
             except Exception as e: 
                 print(f"[!] Errore parsing data '{date_part}': {e}") 
                 continue 
-     
-            # filtro solo per eventi del giorno corrente 
-            if date_obj != now.date(): 
-                continue 
-     
-            date_str = date_obj.strftime("%Y-%m-%d") 
+            
+            # Determina se processare questa data
+            process_this_date = False
+            is_yesterday_early_morning_event_check = False
+
+            if date_obj == now.date():
+                process_this_date = True
+            elif date_obj == yesterday_date:
+                process_this_date = True
+                is_yesterday_early_morning_event_check = True # Flag per eventi di ieri mattina presto
+            else:
+                # Salta date che non sono né oggi né ieri
+                continue
+
+            if not process_this_date:
+                continue
      
             for category_raw, event_items in sections.items(): 
                 category = clean_category_name(category_raw) 
@@ -714,24 +723,38 @@ def eventi_m3u8_generator_world():
                     categorized_channels[category] = [] 
      
                 for item in event_items: 
-                    time_str = item.get("time", "00:00") 
-                    try: 
-                        # Parse orario evento 
-                        time_obj = datetime.strptime(time_str, "%H:%M") + timedelta(hours=2)  # correzione timezone? 
-     
-                        # crea datetime completo con data evento e orario evento 
-                        event_datetime = datetime.combine(date_obj, time_obj.time()) 
-     
-                        # Controllo: includi solo se l'evento è iniziato da meno di 2 ore 
-                        if now - event_datetime > timedelta(hours=2): 
-                            # Evento iniziato da più di 2 ore -> salto 
-                            continue 
-     
-                        time_formatted = time_obj.strftime("%H:%M") 
-                    except Exception: 
-                        time_formatted = time_str 
-     
+                    time_str = item.get("time", "00:00") # Orario originale dal JSON
                     event_title = item.get("event", "Evento") 
+     
+                    try: 
+                        # Parse orario evento originale (dal JSON)
+                        original_event_time_obj = datetime.strptime(time_str, "%H:%M").time()
+
+                        # Costruisci datetime completo dell'evento con la sua data originale
+                        # e l'orario originale, poi applica il timedelta(hours=2) (per "correzione timezone?")
+                        # Questo event_datetime_adjusted è quello che viene usato per il filtro "meno di 2 ore fa" per oggi
+                        # e per il nome del canale.
+                        event_datetime_adjusted_for_display_and_filter = datetime.combine(date_obj, original_event_time_obj) + timedelta(hours=2)
+
+                        if is_yesterday_early_morning_event_check:
+                            # Filtro per eventi di ieri mattina presto (00:00 - 04:00, ora JSON)
+                            start_filter_time = datetime.strptime("00:00", "%H:%M").time()
+                            end_filter_time = datetime.strptime("04:00", "%H:%M").time()
+                            # Confronta l'orario originale dell'evento
+                            if not (start_filter_time <= original_event_time_obj <= end_filter_time):
+                                # Evento di ieri, ma non nell'intervallo 00:00-04:00 -> salto
+                                continue
+                        else: # Eventi di oggi
+                            # Controllo: includi solo se l'evento è iniziato da meno di 2 ore
+                            # Usa event_datetime_adjusted_for_display_and_filter che ha già il +2h
+                            if now - event_datetime_adjusted_for_display_and_filter > timedelta(hours=2):
+                                # Evento di oggi iniziato da più di 2 ore -> salto
+                                continue
+                        
+                        time_formatted = event_datetime_adjusted_for_display_and_filter.strftime("%H:%M")
+                    except Exception as e_time:
+                        print(f"[!] Errore parsing orario '{time_str}' per evento '{event_title}' in data '{date_key}': {e_time}")
+                        time_formatted = time_str # Fallback
      
                     for ch in item.get("channels", []): 
                         channel_name = ch.get("channel_name", "") 
@@ -785,8 +808,8 @@ def eventi_m3u8_generator_world():
                     except Exception as e: 
                         print(f"[!] Errore su {tvg_name}: {e}") 
      
-    if __name__ == "__main__": 
-        generate_m3u_from_schedule(JSON_FILE, OUTPUT_FILE)
+    # Esegui la generazione quando la funzione viene chiamata
+    generate_m3u_from_schedule(JSON_FILE, OUTPUT_FILE)
 
 # Funzione per il terzo script (eventi_m3u8_generator.py)
 def eventi_m3u8_generator():
