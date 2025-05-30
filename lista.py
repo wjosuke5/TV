@@ -1359,6 +1359,7 @@ def eventi_m3u8_generator():
     def extract_channels_from_json(path): 
         keywords = {"italy", "rai", "italia", "it"} 
         now = datetime.now()  # ora attuale completa (data+ora) 
+        yesterday_date = (now - timedelta(days=1)).date() # Data di ieri
      
         with open(path, "r", encoding="utf-8") as f: 
             data = json.load(f) 
