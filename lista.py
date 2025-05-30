@@ -2485,8 +2485,6 @@ def italy_channels():
                     tvg_name_cleaned = re.sub(r"\s*\(.*?\)", "", ch["name"])
                     final_url = ch['url']
                     if PROXY:
-                        # Applica il proxy nel formato PROXY_BASE ENCODED_URL
-                        encoded_url = urllib.parse.quote(final_url)
                         final_url = f"{PROXY.rstrip('/')}{final_url}"
                     
                     f.write(f'#EXTINF:-1 tvg-id="{ch.get("tvg_id", "")}" tvg-name="{tvg_name_cleaned}" tvg-logo="{ch.get("logo", DEFAULT_TVG_ICON)}" group-title="{category}",{ch["name"]}\n')
