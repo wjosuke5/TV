@@ -1539,6 +1539,10 @@ def eventi_sps():
         with open(file_path, "w", encoding="utf-8") as f:
             f.write("#EXTM3U\n")
 
+            # Aggiungi il canale iniziale/informativo
+            f.write(f'#EXTINF:-1 tvg-name="SportStreaming.net" group-title="Eventi Live",SportStreaming.net\n')
+            f.write("https://example.com.m3u8\n\n")
+
             perma_count = 1
 
             for event_url, stream_url, event_time, event_title, league_info in video_streams:
