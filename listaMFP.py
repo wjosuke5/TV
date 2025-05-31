@@ -1375,7 +1375,7 @@ def eventi_sps():
     from datetime import datetime # Aggiunto import per la data corrente
     from dotenv import load_dotenv
 
-    load_dotenv
+    load_dotenv()
 
     # Prefisso per il proxy dello stream
     MFP_IP = os.getenv("IPMFP", "").strip()
