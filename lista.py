@@ -817,6 +817,10 @@ def eventi_m3u8_generator_world():
      
         with open(output_file, "w", encoding="utf-8") as f: 
             f.write("#EXTM3U\n") 
+
+            # Aggiungi il canale iniziale/informativo
+            f.write(f'#EXTINF:-1 tvg-name="DADDYLIVE" group-title="Eventi Live",SportStreaming.net\n')
+            f.write("https://example.com.m3u8\n\n")
      
             for category, channels in categorized_channels.items(): 
                 if not channels: 
@@ -1447,6 +1451,10 @@ def eventi_m3u8_generator():
      
         with open(output_file, "w", encoding="utf-8") as f: 
             f.write("#EXTM3U\n") 
+
+            # Aggiungi il canale iniziale/informativo
+            f.write(f'#EXTINF:-1 tvg-name="DADDYLIVE" group-title="Eventi Live",SportStreaming.net\n')
+            f.write("https://example.com.m3u8\n\n")
      
             for category, channels in categorized_channels.items(): 
                 if not channels: 
@@ -1656,7 +1664,7 @@ def eventi_sps():
             f.write("#EXTM3U\n")
 
             # Aggiungi il canale iniziale/informativo
-            f.write(f'#EXTINF:-1 tvg-name="SportStreaming.net" group-title="Eventi Live",SportStreaming.net\n')
+            f.write(f'#EXTINF:-1 tvg-name="SPORTSTREAMING" group-title="Eventi Live",SPORTSTREAMING\n')
             f.write("https://example.com.m3u8\n\n")
 
             perma_count = 1
