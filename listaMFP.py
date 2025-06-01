@@ -2575,7 +2575,7 @@ def italy_channels():
                     # Altri canali (Vavoo, manuali) necessitano del wrapper proxy/hls se MFP_IP è impostato
                     if MFP_IP and not channel_name.upper().endswith(" (D)"):
                         # Canale Vavoo o manuale, applica il formato proxy/hls
-                        final_url_to_write = f"{MFP_IP.rstrip('/')}/proxy/hls/manifest.m3u8?api_password={MFP_PASSWORD}&d={final_url}"
+                        final_url_to_write = f"{MFP_IP.rstrip('/')}/proxy/hls/manifest.m3u8?api_password={MFP_PASSWORD}&d={raw_channel_url}"
                     else:
                         # Canale Daddylive (URL già formattato o None) o MFP_IP non impostato (usa URL grezzo)
                         final_url_to_write = raw_channel_url
