@@ -1393,16 +1393,10 @@ https://exemple.m3u8
 #EXTINF:-1 tvg-id="italyseriebspeziavscremonese" tvg-name="Italy - Serie B : Spezia vs Cremonese (20:30)" tvg-logo="https://raw.githubusercontent.com/nzo66/TV/main/logos/Spezia_vs_Cremonese.png" group-title="Eventi Live",Italy - Serie B : Spezia vs Cremonese (20:30)
 https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://nfsnew.newkso.ru/nfs/premium10/mono.m3u8
 
-#EXTINF:-1 tvg-name="Tennis" group-title="Eventi Live",--- Tennis ---
-https://exemple.m3u8
-
-#EXTINF:-1 tvg-id="rolandgarrostennismensandwomenssinglesday8" tvg-name="Roland-Garros Tennis Men's and Women's Singles | Day 8 (11:00)" tvg-logo="http://www.bing.com/sa/simg/facebook_sharing_5.png" group-title="Eventi Live",Roland-Garros Tennis Men's and Women's Singles | Day 8 (11:00)
-https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://windnew.newkso.ru/wind/premium879/mono.m3u8
-
 #EXTINF:-1 tvg-name="Motorsport" group-title="Eventi Live",--- Motorsport ---
 https://exemple.m3u8
 
-#EXTINF:-1 tvg-id="worldchampionshipgermanymx2race1" tvg-name="World Championship Germany | MX2 | Race 1 (13:00)" tvg-logo="https://www.ieiworld.com.cn/_attach_file/product/photo/658_1565246260_Mustang-MPCIE-MX2-VPU-accelerator-600.png" group-title="Eventi Live",World Championship Germany | MX2 | Race 1 (13:00)
+#EXTINF:-1 tvg-id="worldchampionshipgermanymx2race1" tvg-name="World Championship Germany | MX2 | Race 1 (13:00)" tvg-logo="https://www.level1graphic.com/wp-content/uploads/2024/06/NP_crf5-600x600.png" group-title="Eventi Live",World Championship Germany | MX2 | Race 1 (13:00)
 https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://windnew.newkso.ru/wind/premium879/mono.m3u8
 
 #EXTINF:-1 tvg-id="formula1aramcospanishgrandprixgrandprixsunday" tvg-name="Formula 1 : Aramco Spanish Grand Prix - Grand Prix Sunday (14:00)" tvg-logo="https://logospng.org/download/formula-1/formula-1-4096.png" group-title="Eventi Live",Formula 1 : Aramco Spanish Grand Prix - Grand Prix Sunday (14:00)
@@ -1423,7 +1417,7 @@ https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://windnew.newkso.ru/wind/prem
 #EXTINF:-1 tvg-name="Basketball" group-title="Eventi Live",--- Basketball ---
 https://exemple.m3u8
 
-#EXTINF:-1 tvg-id="seriea220242025playoffsemifinal2possiblygame4" tvg-name="Serie A2 2024/2025-Playoff: Semi-final 2 - possibly game 4 (19:50)" tvg-logo="https://www.ogol.com.br/img/logos/competicoes/3776_imgbank_a2f_20210720115207.png" group-title="Eventi Live",Serie A2 2024/2025-Playoff: Semi-final 2 - possibly game 4 (19:50)
+#EXTINF:-1 tvg-id="seriea220242025playoffsemifinal2possiblygame4" tvg-name="Serie A2 2024/2025-Playoff: Semi-final 2 - possibly game 4 (19:50)" tvg-logo="https://static.flashscore.com/res/image/data/EgW8iZCO-UVwfrmvp.png" group-title="Eventi Live",Serie A2 2024/2025-Playoff: Semi-final 2 - possibly game 4 (19:50)
 https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://ddy6new.newkso.ru/ddy6/premium882/mono.m3u8
 
 #EXTINF:-1 tvg-id="basketserieaplayoffssemifinalsgame2" tvg-name="Basket : Serie A Playoffs | Semi-Finals | Game 2 (20:40)" tvg-logo="https://png.pngtree.com/png-clipart/20230527/original/pngtree-basketball-logo-png-image_9171255.png" group-title="Eventi Live",Basket : Serie A Playoffs | Semi-Finals | Game 2 (20:40)
@@ -1435,10 +1429,10 @@ https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://ddy6new.newkso.ru/ddy6/prem
 #EXTINF:-1 tvg-name="Cycling" group-title="Eventi Live",--- Cycling ---
 https://exemple.m3u8
 
-#EXTINF:-1 tvg-id="tourofitalystage21141roma" tvg-name="Tour of Italy Stage 21 - 141 Roma (15:00)" tvg-logo="https://png.pngtree.com/png-clipart/20230405/original/pngtree-made-in-italy-vector-logo-with-italian-flag-png-image_9027297.png" group-title="Eventi Live",Tour of Italy Stage 21 - 141 Roma (15:00)
+#EXTINF:-1 tvg-id="tourofitalystage21141roma" tvg-name="Tour of Italy Stage 21 - 141 Roma (15:00)" tvg-logo="https://images.sirved.com/ChIJHVIkJpz27IgRb_c3crdydQ4/p1RXjL4VJX.png" group-title="Eventi Live",Tour of Italy Stage 21 - 141 Roma (15:00)
 https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://ddy6new.newkso.ru/ddy6/premium851/mono.m3u8
 
-#EXTINF:-1 tvg-id="tourofitalystage21141roma" tvg-name="Tour of Italy Stage 21 - 141 Roma (15:00)" tvg-logo="https://images.sirved.com/ChIJHVIkJpz27IgRb_c3crdydQ4/p1RXjL4VJX.png" group-title="Eventi Live",Tour of Italy Stage 21 - 141 Roma (15:00)
+#EXTINF:-1 tvg-id="tourofitalystage21141roma" tvg-name="Tour of Italy Stage 21 - 141 Roma (15:00)" tvg-logo="https://png.pngtree.com/png-clipart/20230405/original/pngtree-made-in-italy-vector-logo-with-italian-flag-png-image_9027297.png" group-title="Eventi Live",Tour of Italy Stage 21 - 141 Roma (15:00)
 https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://windnew.newkso.ru/wind/premium878/mono.m3u8
 
 
