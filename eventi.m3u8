@@ -11,7 +11,7 @@ https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://nfsnew.newkso.ru/nfs/premiu
 #EXTINF:-1 tvg-name="Tennis" group-title="Eventi Live",--- Tennis ---
 https://exemple.m3u8
 
-#EXTINF:-1 tvg-id="rolandgarrostennismensandwomenssingles4thround" tvg-name="Roland-Garros Tennis Men's and Women's Singles | 4th Round (11:00)" tvg-logo="http://www.bing.com/sa/simg/facebook_sharing_5.png" group-title="Eventi Live",Roland-Garros Tennis Men's and Women's Singles | 4th Round (11:00)
+#EXTINF:-1 tvg-id="rolandgarrostennismensandwomenssingles4thround" tvg-name="Roland-Garros Tennis Men's and Women's Singles | 4th Round (11:00)" tvg-logo="https://logos-download.com/wp-content/uploads/2016/10/Roland_Garros_logo.png" group-title="Eventi Live",Roland-Garros Tennis Men's and Women's Singles | 4th Round (11:00)
 https://nzo66-tvproxy.hf.space/proxy/m3u?url=https://windnew.newkso.ru/wind/premium879/mono.m3u8
 
 #EXTINF:-1 tvg-name="Basketball" group-title="Eventi Live",--- Basketball ---
