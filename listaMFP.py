@@ -1623,8 +1623,6 @@ def eventi_sps():
 
             if video_streams:
                 update_m3u_file(video_streams)
-            else:
-                print("Nessun flusso video trovato in tutte le pagine evento.")
 
 # Funzione per il quarto script (schedule_extractor.py)
 def schedule_extractor():
