@@ -61,7 +61,7 @@ Se il proxy fornito non dovesse funzionare o preferisci crearne uno tuo, puoi fa
 ### ✅ Crea il tuo proxy personalizzato
 
 - **Proxy base consigliato**:
-  `usando questo proxy hai la possibilita' di installarlo su un qualsiasi dispositivo android grazie all'app Termux`
+- `usando questo proxy hai la possibilita' di installarlo su un qualsiasi dispositivo android grazie all'app Termux`
   [tvproxy (repo GitHub)](https://github.com/nzo66/tvproxy)
 
 - **Proxy alternativo**:  
