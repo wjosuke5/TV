@@ -1737,8 +1737,16 @@ def eventi_sps():
                 else:
                     print(f"Nessun flusso trovato per {event_url}")
 
-            if video_streams:
-                update_m3u_file(video_streams)
+            update_m3u_file(video_streams)
+
+            # Add a note if no actual video streams were processed and added to the file.
+            if not video_streams:
+                if not event_pages:
+                    # "Nessuna pagina evento trovata." was already printed.
+                    # update_m3u_file confirms file creation.
+                    pass # Avoid redundant messages.
+                else: # event_pages were found, but no streams matched criteria
+                    print("Nota: Nessun flusso video specifico per gli eventi odierni è stato aggiunto a eventisps.m3u8 (potrebbe contenere solo l'intestazione).")
     
 # Funzione per il quarto script (schedule_extractor.py)
 def schedule_extractor():
