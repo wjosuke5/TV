@@ -1502,16 +1502,6 @@
                 ]
             },
             {
-                "time": "19:00",
-                "event": "College Baseball NCAA Tournament, Regional: Teams TBA",
-                "channels": [
-                    {
-                        "channel_name": "ESPNU USA",
-                        "channel_id": "316"
-                    }
-                ]
-            },
-            {
                 "time": "22:00",
                 "event": "College Baseball NCAA Tournament, Regional: Teams TBA",
                 "channels": [
