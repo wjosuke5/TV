@@ -278,6 +278,17 @@ def eventi_m3u8_generator_world():
     current_time = time.time()
     three_hours_in_seconds = 3 * 60 * 60
     
+    # Base URLs for the standard stream checking mechanism
+    NEW_KSO_BASE_URLS = [
+        "https://new.newkso.ru/wind/",
+        "https://new.newkso.ru/ddy6/",
+        "https://new.newkso.ru/zeko/",
+        "https://new.newkso.ru/nfs/",
+        "https://new.newkso.ru/dokko1/",
+    ]
+    # Specific base URL for tennis channels
+    WIKIHZ_TENNIS_BASE_URL = "https://new.newkso.ru/wikihz/"
+
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
         return re.sub(r'<[^>]+>', '', name).strip()
@@ -674,81 +685,81 @@ def eventi_m3u8_generator_world():
         # Se non troviamo nulla, restituiamo None 
         return None
      
-    def get_iframe_url(url): 
-        try: 
-            resp = session.post(url, timeout=HTTP_TIMEOUT) 
-            resp.raise_for_status() 
-            match = re.search(r'iframe src="([^"]+)"', resp.text) 
-            return match.group(1) if match else None 
-        except requests.RequestException as e: 
-            print(f"[!] Errore richiesta iframe URL {url}: {e}") 
+    def get_stream_from_channel_id(channel_id_str, is_tennis_channel=False): 
+        # channel_id_str is the numeric ID like "121"
+        # is_tennis_channel is a boolean flag
+        raw_m3u8_url_found = None
+
+        # Determine if we should use the special tennis URL logic
+        # True if flagged by name OR if channel ID is like "15xx" (4 digits starting with 15)
+        should_try_tennis_url = is_tennis_channel or \
+                                (channel_id_str.startswith("15") and len(channel_id_str) == 4)
+
+        if should_try_tennis_url:
+            if not is_tennis_channel and channel_id_str.startswith("15") and len(channel_id_str) == 4:
+                # Log if we're trying tennis logic based on ID pattern only
+                print(f"[INFO] Channel ID {channel_id_str} matches 15xx pattern. Attempting tennis-specific URL.")
+            # Try the specific tennis URL first
+            last_two_digits = channel_id_str[-2:].zfill(2)
+            tennis_stream_path = f"wikiten{last_two_digits}/mono.m3u8"
+            candidate_url = f"{WIKIHZ_TENNIS_BASE_URL.rstrip('/')}/{tennis_stream_path.lstrip('/')}"
+            try:
+                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2)
+                if response.status_code == 200:
+                    print(f"[✓] Stream TENNIS (or 15xx ID) trovato per channel ID {channel_id_str} at: {candidate_url}")
+                    raw_m3u8_url_found = candidate_url
+                response.close()
+            except requests.exceptions.Timeout:
+                # print(f"[!] Timeout checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}")
+                pass
+            except requests.exceptions.ConnectionError:
+                # print(f"[!] Connection error checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}")
+                pass
+            except requests.exceptions.RequestException:
+                # print(f"[!] Error checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}: {e}")
+                pass
+        
+        if raw_m3u8_url_found: # If found with tennis/15xx logic, apply proxy and return
+            if PROXY:
+                return f"{PROXY.rstrip('/')}{raw_m3u8_url_found}"
+            return raw_m3u8_url_found
+
+        # If not found with tennis/15xx logic OR if it wasn't a tennis/15xx channel, try standard URLs
+        for base_url in NEW_KSO_BASE_URLS: # These are the standard base URLs
+            stream_path = f"premium{channel_id_str}/mono.m3u8"
+            candidate_url = f"{base_url.rstrip('/')}/{stream_path.lstrip('/')}"
+            try:
+                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2) # HTTP_TIMEOUT is 10, so 5s timeout
+                if response.status_code == 200:
+                    print(f"[✓] Stream found for channel ID {channel_id_str} at: {candidate_url}")
+                    raw_m3u8_url_found = candidate_url
+                    response.close() # Close the stream connection
+                    break 
+                else:
+                    pass
+                response.close() # Ensure connection is closed
+            except requests.exceptions.Timeout:
+                pass 
+            except requests.exceptions.ConnectionError:
+                pass
+            except requests.exceptions.RequestException: 
+                pass 
+        
+        if raw_m3u8_url_found: # This will be from the standard loop if reached here
+            if PROXY: # PROXY is a global variable from .env
+                return f"{PROXY.rstrip('/')}{raw_m3u8_url_found}"
+            return raw_m3u8_url_found
+        else:
+            # This print might be too verbose if many channels fail, consider removing or reducing frequency
+            # print(f"[✗] No stream found for channel ID {channel_id_str} after checking all base URLs.")
             return None 
-     
-    def get_final_m3u8(iframe_url): 
-        try: 
-            parsed = re.search(r"https?://([^/]+)", iframe_url) 
-            if not parsed: 
-                print(f"[!] URL iframe non valido: {iframe_url}") 
-                return None 
-            referer_base = f"https://{parsed.group(1)}" 
-     
-            page_resp = session.post(iframe_url, timeout=HTTP_TIMEOUT) 
-            page_resp.raise_for_status() 
-            page = page_resp.text 
-     
-            key = re.search(r'var channelKey = "(.*?)"', page) 
-            ts  = re.search(r'var authTs     = "(.*?)"', page) 
-            rnd = re.search(r'var authRnd    = "(.*?)"', page) 
-            sig = re.search(r'var authSig    = "(.*?)"', page) 
-     
-            if not all([key, ts, rnd, sig]): 
-                print(f"[!] Mancano variabili auth in pagina {iframe_url}") 
-                return None 
-     
-            channel_key = key.group(1) 
-            auth_ts     = ts.group(1) 
-            auth_rnd    = rnd.group(1) 
-            auth_sig    = quote(sig.group(1), safe='') 
-     
-            auth_url = f"https://top2new.newkso.ru/auth.php?channel_id={channel_key}&ts={auth_ts}&rnd={auth_rnd}&sig={auth_sig}" 
-            session.get(auth_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) 
-     
-            lookup_url = f"{referer_base}/server_lookup.php?channel_id={quote(channel_key)}" 
-            lookup = session.get(lookup_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) 
-            lookup.raise_for_status() 
-            data = lookup.json() 
-     
-            server_key = data.get("server_key") 
-            if not server_key: 
-                print(f"[!] server_key non trovato per channel {channel_key}") 
-                return None 
-     
-            if server_key == "top1/cdn": 
-                return f"https://top1.newkso.ru/top1/cdn/{channel_key}/mono.m3u8" 
-     
-            stream_url = (f"{PROXY}https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.m3u8") 
-            return stream_url 
-     
-        except requests.RequestException as e: 
-            print(f"[!] Errore richiesta get_final_m3u8: {e}") 
-            return None 
-        except json.JSONDecodeError: 
-            print(f"[!] Errore parsing JSON da server_lookup per {iframe_url}") 
-            return None 
-     
-    def get_stream_from_channel_id(channel_id): 
-        embed_url = f"{LINK_DADDY}/embed/stream-{channel_id}.php" 
-        iframe = get_iframe_url(embed_url) 
-        if iframe: 
-            return get_final_m3u8(iframe) 
-        return None 
      
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
         return re.sub(r'<[^>]+>', '', name).strip() 
      
     def extract_channels_from_json(path): 
-        keywords = {"italy", "rai", "italia", "it", "uk", "tnt", "usa", "tennis channel", "tennis stream", "la"} 
+        keywords = {"italy", "rai", "italia", "it", "uk", "tnt", "usa", "tennis", "la"} 
         now = datetime.now()  # Ora attuale completa (data+ora) 
         yesterday_date = (now - timedelta(days=1)).date() # Data di ieri
      
@@ -799,7 +810,12 @@ def eventi_m3u8_generator_world():
                     for ch in item.get("channels", []): 
                         channel_name = ch.get("channel_name", "") 
                         channel_id = ch.get("channel_id", "") 
-     
+
+                        # Determine if it's a tennis channel based on its name
+                        is_tennis = False
+                        if "tennis channel" in channel_name.lower() or "tennis stream" in channel_name.lower():
+                            is_tennis = True
+                            
                         words = set(re.findall(r'\b\w+\b', channel_name.lower())) 
                         if keywords.intersection(words): 
                             tvg_name = f"{event_title} ({time_formatted})" 
@@ -807,7 +823,8 @@ def eventi_m3u8_generator_world():
                                 "tvg_name": tvg_name, 
                                 "channel_name": channel_name, 
                                 "channel_id": channel_id,
-                                "event_title": event_title  # Aggiungiamo il titolo dell'evento per la ricerca del logo
+                                "event_title": event_title,  # Aggiungiamo il titolo dell'evento per la ricerca del logo
+                                "is_tennis": is_tennis # Add the flag
                             }) 
      
         return categorized_channels 
@@ -833,6 +850,7 @@ def eventi_m3u8_generator_world():
                     tvg_name = ch["tvg_name"] 
                     # channel_id_original = ch["channel_id"] # ID numerico originale, usato per get_stream
                     event_title = ch["event_title"]  # Otteniamo il titolo dell'evento
+                    is_tennis_event_channel = ch.get("is_tennis", False) # Get the flag
                     
                     # Genera tvg-id basato sul nome dell'evento pulito
                     event_based_tvg_id = clean_tvg_id(event_title)
@@ -845,7 +863,7 @@ def eventi_m3u8_generator_world():
                     logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else ''
      
                     try: 
-                        stream = get_stream_from_channel_id(ch["channel_id"]) # Usa l'ID numerico originale per lo stream
+                        stream = get_stream_from_channel_id(ch["channel_id"], is_tennis_channel=is_tennis_event_channel) # Pass the flag
                         if stream: 
                             f.write(f'#EXTINF:-1 tvg-id="{event_based_tvg_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n') 
                             print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)")) 
@@ -895,6 +913,17 @@ def eventi_m3u8_generator():
     current_time = time.time()
     three_hours_in_seconds = 3 * 60 * 60
     
+    # Base URLs for the standard stream checking mechanism
+    NEW_KSO_BASE_URLS_ITA = [ # Renamed to avoid conflict if this script was one giant file
+        "https://new.newkso.ru/wind/",
+        "https://new.newkso.ru/ddy6/",
+        "https://new.newkso.ru/zeko/",
+        "https://new.newkso.ru/nfs/",
+        "https://new.newkso.ru/dokko1/",
+    ]
+    # Specific base URL for tennis channels (duplicate for this function's scope)
+    WIKIHZ_TENNIS_BASE_URL_ITA = "https://new.newkso.ru/wikihz/"
+
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
         return re.sub(r'<[^>]+>', '', name).strip()
@@ -1291,74 +1320,72 @@ def eventi_m3u8_generator():
         # Se non troviamo nulla, restituiamo None 
         return None
      
-    def get_iframe_url(url): 
-        try: 
-            resp = session.post(url, timeout=HTTP_TIMEOUT) 
-            resp.raise_for_status() 
-            match = re.search(r'iframe src="([^"]+)"', resp.text) 
-            return match.group(1) if match else None 
-        except requests.RequestException as e: 
-            print(f"[!] Errore richiesta iframe URL {url}: {e}") 
+    def get_stream_from_channel_id(channel_id_str, is_tennis_channel=False): 
+        # channel_id_str is the numeric ID like "121"
+        # is_tennis_channel is a boolean flag
+        raw_m3u8_url_found = None
+
+        # Determine if we should use the special tennis URL logic
+        # True if flagged by name OR if channel ID is like "15xx" (4 digits starting with 15)
+        should_try_tennis_url = is_tennis_channel or \
+                                (channel_id_str.startswith("15") and len(channel_id_str) == 4)
+
+        if should_try_tennis_url:
+            if not is_tennis_channel and channel_id_str.startswith("15") and len(channel_id_str) == 4:
+                # Log if we're trying tennis logic based on ID pattern only
+                print(f"[INFO] Channel ID {channel_id_str} matches 15xx pattern. Attempting tennis-specific URL.")
+            # Try the specific tennis URL first
+            last_two_digits = channel_id_str[-2:].zfill(2)
+            tennis_stream_path = f"wikiten{last_two_digits}/mono.m3u8"
+            candidate_url = f"{WIKIHZ_TENNIS_BASE_URL_ITA.rstrip('/')}/{tennis_stream_path.lstrip('/')}"
+            try:
+                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2)
+                if response.status_code == 200:
+                    print(f"[✓] Stream TENNIS (or 15xx ID) trovato per channel ID {channel_id_str} at: {candidate_url}")
+                    raw_m3u8_url_found = candidate_url
+                response.close()
+            except requests.exceptions.Timeout:
+                # print(f"[!] Timeout checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}")
+                pass
+            except requests.exceptions.ConnectionError:
+                # print(f"[!] Connection error checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}")
+                pass
+            except requests.exceptions.RequestException:
+                # print(f"[!] Error checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}: {e}")
+                pass
+
+        if raw_m3u8_url_found: # If found with tennis/15xx logic, apply proxy and return
+            if PROXY:
+                return f"{PROXY.rstrip('/')}{raw_m3u8_url_found}"
+            return raw_m3u8_url_found
+
+        # If not found with tennis/15xx logic OR if it wasn't a tennis/15xx channel, try standard URLs
+        for base_url in NEW_KSO_BASE_URLS_ITA: # These are the standard base URLs
+            stream_path = f"premium{channel_id_str}/mono.m3u8"
+            candidate_url = f"{base_url.rstrip('/')}/{stream_path.lstrip('/')}"
+            try:
+                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2)
+                if response.status_code == 200:
+                    print(f"[✓] Stream found for channel ID {channel_id_str} at: {candidate_url}")
+                    raw_m3u8_url_found = candidate_url
+                    response.close()
+                    break
+                else:
+                    pass
+                response.close()
+            except requests.exceptions.Timeout:
+                pass
+            except requests.exceptions.ConnectionError:
+                pass
+            except requests.exceptions.RequestException:
+                pass
+        
+        if raw_m3u8_url_found: # This will be from the standard loop if reached here
+            if PROXY: # PROXY is a global variable from .env
+                return f"{PROXY.rstrip('/')}{raw_m3u8_url_found}"
+            return raw_m3u8_url_found
+        else:
             return None 
-     
-    def get_final_m3u8(iframe_url): 
-        try: 
-            parsed = re.search(r"https?://([^/]+)", iframe_url) 
-            if not parsed: 
-                print(f"[!] URL iframe non valido: {iframe_url}") 
-                return None 
-            referer_base = f"https://{parsed.group(1)}" 
-     
-            page_resp = session.post(iframe_url, timeout=HTTP_TIMEOUT) 
-            page_resp.raise_for_status() 
-            page = page_resp.text 
-     
-            key = re.search(r'var channelKey = "(.*?)"', page) 
-            ts  = re.search(r'var authTs     = "(.*?)"', page) 
-            rnd = re.search(r'var authRnd    = "(.*?)"', page) 
-            sig = re.search(r'var authSig    = "(.*?)"', page) 
-     
-            if not all([key, ts, rnd, sig]): 
-                print(f"[!] Mancano variabili auth in pagina {iframe_url}") 
-                return None 
-     
-            channel_key = key.group(1) 
-            auth_ts     = ts.group(1) 
-            auth_rnd    = rnd.group(1) 
-            auth_sig    = quote(sig.group(1), safe='') 
-     
-            auth_url = f"https://top2new.newkso.ru/auth.php?channel_id={channel_key}&ts={auth_ts}&rnd={auth_rnd}&sig={auth_sig}" 
-            session.get(auth_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) 
-     
-            lookup_url = f"{referer_base}/server_lookup.php?channel_id={quote(channel_key)}" 
-            lookup = session.get(lookup_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) 
-            lookup.raise_for_status() 
-            data = lookup.json() 
-     
-            server_key = data.get("server_key") 
-            if not server_key: 
-                print(f"[!] server_key non trovato per channel {channel_key}") 
-                return None 
-     
-            if server_key == "top1/cdn": 
-                return f"https://top1.newkso.ru/top1/cdn/{channel_key}/mono.m3u8" 
-     
-            stream_url = (f"{PROXY}https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.m3u8") 
-            return stream_url 
-     
-        except requests.RequestException as e: 
-            print(f"[!] Errore richiesta get_final_m3u8: {e}") 
-            return None 
-        except json.JSONDecodeError: 
-            print(f"[!] Errore parsing JSON da server_lookup per {iframe_url}") 
-            return None 
-     
-    def get_stream_from_channel_id(channel_id): 
-        embed_url = f"{LINK_DADDY}/embed/stream-{channel_id}.php" 
-        iframe = get_iframe_url(embed_url) 
-        if iframe: 
-            return get_final_m3u8(iframe) 
-        return None 
      
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
@@ -1434,7 +1461,12 @@ def eventi_m3u8_generator():
                     for ch in item.get("channels", []): 
                         channel_name = ch.get("channel_name", "") 
                         channel_id = ch.get("channel_id", "") 
-     
+
+                        # Determine if it's a tennis channel based on its name
+                        is_tennis = False
+                        if "tennis channel" in channel_name.lower() or "tennis stream" in channel_name.lower():
+                            is_tennis = True
+
                         words = set(re.findall(r'\b\w+\b', channel_name.lower())) 
                         if keywords.intersection(words): 
                             tvg_name = f"{event_title} ({time_formatted})"
@@ -1442,7 +1474,8 @@ def eventi_m3u8_generator():
                                 "tvg_name": tvg_name, 
                                 "channel_name": channel_name, 
                                 "channel_id": channel_id,
-                                "event_title": event_title  # Aggiungiamo il titolo dell'evento per la ricerca del logo
+                                "event_title": event_title,  # Aggiungiamo il titolo dell'evento per la ricerca del logo
+                                "is_tennis": is_tennis # Add the flag
                             }) 
         return categorized_channels 
      
@@ -1467,6 +1500,7 @@ def eventi_m3u8_generator():
                     tvg_name = ch["tvg_name"] 
                     # channel_id_original = ch["channel_id"] # ID numerico originale, usato per get_stream
                     event_title = ch["event_title"]  # Otteniamo il titolo dell'evento
+                    is_tennis_event_channel = ch.get("is_tennis", False) # Get the flag
                     
                     # Genera tvg-id basato sul nome dell'evento pulito
                     event_based_tvg_id = clean_tvg_id(event_title)
@@ -1479,7 +1513,7 @@ def eventi_m3u8_generator():
                     logo_attribute = f' tvg-logo="{logo_url}"' if logo_url else ''
      
                     try: 
-                        stream = get_stream_from_channel_id(ch["channel_id"]) # Usa l'ID numerico originale per lo stream
+                        stream = get_stream_from_channel_id(ch["channel_id"], is_tennis_channel=is_tennis_event_channel) # Pass the flag
                         if stream: 
                             f.write(f'#EXTINF:-1 tvg-id="{event_based_tvg_id}" tvg-name="{tvg_name}"{logo_attribute} group-title="Eventi Live",{tvg_name}\n{stream}\n\n') 
                             print(f"[✓] {tvg_name}" + (f" (logo trovato)" if logo_url else " (nessun logo trovato)")) 
@@ -2478,6 +2512,15 @@ def italy_channels():
     # Crea una sessione requests per riutilizzare connessioni e gestire cookies
     session = requests.Session()
 
+    # Base URLs for the new stream checking mechanism for Daddylive channels
+    NEW_KSO_BASE_URLS_FOR_ITALY_CHANNELS = [
+        "https://new.newkso.ru/wind/",
+        "https://new.newkso.ru/ddy6/",
+        "https://new.newkso.ru/zeko/",
+        "https://new.newkso.ru/nfs/",
+        "https://new.newkso.ru/dokko1/",
+    ]
+
     BASE_URLS = [
         "https://vavoo.to"
     ]
@@ -2590,81 +2633,44 @@ def italy_channels():
         ]
 
     # --- Funzioni per risolvere gli stream Daddylive ---
-    def get_iframe_url(url):
-        try:
-            # Usiamo POST come nello script originale, anche se GET potrebbe essere sufficiente per ottenere l'iframe
-            resp = session.post(url, timeout=HTTP_TIMEOUT)
-            resp.raise_for_status()
-            match = re.search(r'iframe src="([^"]+)"', resp.text)
-            return match.group(1) if match else None
-        except requests.RequestException as e:
-            print(f"[!] Errore richiesta iframe URL {url}: {e}")
+    def get_stream_from_channel_id(channel_id_str): # channel_id_str is the numeric ID like "121"
+        raw_m3u8_url_found = None
+        # Use the NEW_KSO_BASE_URLS_FOR_ITALY_CHANNELS defined in this function's scope
+        for base_url in NEW_KSO_BASE_URLS_FOR_ITALY_CHANNELS:
+            stream_path = f"premium{channel_id_str}/mono.m3u8"
+            candidate_url = f"{base_url.rstrip('/')}/{stream_path.lstrip('/')}"
+            
+            try:
+                # Using GET with stream=True and a timeout.
+                # HTTP_TIMEOUT is a global in this function's scope (italy_channels)
+                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2) 
+                if response.status_code == 200:
+                    print(f"[✓] Stream Daddylive (italy_channels) trovato per ID {channel_id_str} a: {candidate_url}")
+                    raw_m3u8_url_found = candidate_url
+                    response.close() # Close the stream connection
+                    break 
+                else:
+                    # Optional: log if status is not 200 but not an exception
+                    # print(f"[INFO] ID Canale {channel_id_str} non trovato a {candidate_url} (Status: {response.status_code})")
+                    pass
+                response.close() # Ensure connection is closed
+            except requests.exceptions.Timeout:
+                # print(f"[!] Timeout controllo stream per ID canale {channel_id_str} a {candidate_url}")
+                pass 
+            except requests.exceptions.ConnectionError:
+                # print(f"[!] Errore connessione controllo stream per ID canale {channel_id_str} a {candidate_url}")
+                pass
+            except requests.exceptions.RequestException: 
+                # print(f"[!] Errore controllo stream per ID canale {channel_id_str} a {candidate_url}: {e}")
+                pass 
+        
+        if raw_m3u8_url_found:
+            # PROXY is a global in this function's scope (italy_channels)
+            # Non applichiamo il proxy qui, verrà fatto in save_m3u8 se PROXY è definito
+            return raw_m3u8_url_found
+        else:
+            # print(f"[✗] Nessuno stream trovato per ID canale {channel_id_str} dopo aver controllato tutte le URL base.")
             return None
-
-    def get_final_m3u8(iframe_url):
-        try:
-            parsed_iframe_url = urllib.parse.urlparse(iframe_url)
-            if not parsed_iframe_url.scheme or not parsed_iframe_url.netloc:
-                print(f"[!] URL iframe non valido: {iframe_url}")
-                return None
-            referer_base = f"{parsed_iframe_url.scheme}://{parsed_iframe_url.netloc}"
-
-            page_resp = session.post(iframe_url, timeout=HTTP_TIMEOUT) # Usiamo POST come nello script originale
-            page_resp.raise_for_status()
-            page = page_resp.text
-
-            key_match = re.search(r'var channelKey = "(.*?)"', page)
-            ts_match  = re.search(r'var authTs     = "(.*?)"', page)
-            rnd_match = re.search(r'var authRnd    = "(.*?)"', page)
-            sig_match = re.search(r'var authSig    = "(.*?)"', page)
-
-            if not all([key_match, ts_match, rnd_match, sig_match]):
-                print(f"[!] Mancano variabili auth in pagina {iframe_url}")
-                return None
-
-            channel_key = key_match.group(1)
-            auth_ts     = ts_match.group(1)
-            auth_rnd    = rnd_match.group(1)
-            auth_sig    = urllib.parse.quote(sig_match.group(1), safe='')
-
-            auth_url = f"https://top2new.newkso.ru/auth.php?channel_id={channel_key}&ts={auth_ts}&rnd={auth_rnd}&sig={auth_sig}"
-            session.get(auth_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT) # Auth call
-
-            lookup_url = f"{referer_base}/server_lookup.php?channel_id={urllib.parse.quote(channel_key)}"
-            lookup_resp = session.get(lookup_url, headers={"Referer": referer_base}, timeout=HTTP_TIMEOUT)
-            lookup_resp.raise_for_status()
-            data = lookup_resp.json()
-
-            server_key = data.get("server_key")
-            if not server_key:
-                print(f"[!] server_key non trovato per channel {channel_key} da {iframe_url}")
-                return None
-
-            if server_key == "top1/cdn":
-                raw_m3u8_url = f"https://top1.newkso.ru/top1/cdn/{channel_key}/mono.m3u8"
-            else:
-                raw_m3u8_url = f"https://{server_key}new.newkso.ru/{server_key}/{channel_key}/mono.m3u8"
-
-            # Restituisce sempre l'URL grezzo. Il proxy verrà applicato in save_m3u8 se necessario.
-            return raw_m3u8_url
-
-        except requests.RequestException as e:
-            print(f"[!] Errore richiesta in get_final_m3u8 per {iframe_url}: {e}")
-            return None
-        except json.JSONDecodeError:
-            print(f"[!] Errore parsing JSON da server_lookup per {iframe_url}")
-            return None
-        except Exception as e:
-            print(f"[!] Errore imprevisto in get_final_m3u8 per {iframe_url}: {e}")
-            return None
-
-    def get_stream_from_channel_id(channel_id):
-        # LINK_DADDY è una variabile globale
-        embed_url = f"{LINK_DADDY.rstrip('/')}/embed/stream-{channel_id}.php"
-        iframe = get_iframe_url(embed_url)
-        if iframe:
-            return get_final_m3u8(iframe)
-        return None
     # --- Fine funzioni Daddylive ---
 
     def fetch_channels_from_daddylive_page(page_url, base_daddy_url):
