@@ -689,6 +689,8 @@ def eventi_m3u8_generator_world():
         # channel_id_str is the numeric ID like "121"
         # is_tennis_channel is a boolean flag
         raw_m3u8_url_found = None
+        daddy_headers_str = "&h_User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36&h_Referer=https://alldownplay.xyz/&h_Origin=https://alldownplay.xyz"
+
 
         # Determine if we should use the special tennis URL logic
         # True if flagged by name OR if channel ID is like "15xx" (4 digits starting with 15)
@@ -720,9 +722,10 @@ def eventi_m3u8_generator_world():
                 pass
         
         if raw_m3u8_url_found: # If found with tennis/15xx logic, apply proxy and return
+            url_with_headers = raw_m3u8_url_found + daddy_headers_str
             if PROXY:
-                return f"{PROXY.rstrip('/')}{raw_m3u8_url_found}"
-            return raw_m3u8_url_found
+                return f"{PROXY.rstrip('/')}{url_with_headers}"
+            return url_with_headers
 
         # If not found with tennis/15xx logic OR if it wasn't a tennis/15xx channel, try standard URLs
         for base_url in NEW_KSO_BASE_URLS: # These are the standard base URLs
@@ -746,9 +749,10 @@ def eventi_m3u8_generator_world():
                 pass 
         
         if raw_m3u8_url_found: # This will be from the standard loop if reached here
+            url_with_headers = raw_m3u8_url_found + daddy_headers_str
             if PROXY: # PROXY is a global variable from .env
-                return f"{PROXY.rstrip('/')}{raw_m3u8_url_found}"
-            return raw_m3u8_url_found
+                return f"{PROXY.rstrip('/')}{url_with_headers}"
+            return url_with_headers
         else:
             # This print might be too verbose if many channels fail, consider removing or reducing frequency
             # print(f"[✗] No stream found for channel ID {channel_id_str} after checking all base URLs.")
@@ -1324,6 +1328,8 @@ def eventi_m3u8_generator():
         # channel_id_str is the numeric ID like "121"
         # is_tennis_channel is a boolean flag
         raw_m3u8_url_found = None
+        daddy_headers_str = "&h_User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36&h_Referer=https://alldownplay.xyz/&h_Origin=https://alldownplay.xyz"
+
 
         # Determine if we should use the special tennis URL logic
         # True if flagged by name OR if channel ID is like "15xx" (4 digits starting with 15)
@@ -1355,9 +1361,10 @@ def eventi_m3u8_generator():
                 pass
 
         if raw_m3u8_url_found: # If found with tennis/15xx logic, apply proxy and return
+            url_with_headers = raw_m3u8_url_found + daddy_headers_str
             if PROXY:
-                return f"{PROXY.rstrip('/')}{raw_m3u8_url_found}"
-            return raw_m3u8_url_found
+                return f"{PROXY.rstrip('/')}{url_with_headers}"
+            return url_with_headers
 
         # If not found with tennis/15xx logic OR if it wasn't a tennis/15xx channel, try standard URLs
         for base_url in NEW_KSO_BASE_URLS_ITA: # These are the standard base URLs
@@ -1381,9 +1388,10 @@ def eventi_m3u8_generator():
                 pass
         
         if raw_m3u8_url_found: # This will be from the standard loop if reached here
+            url_with_headers = raw_m3u8_url_found + daddy_headers_str
             if PROXY: # PROXY is a global variable from .env
-                return f"{PROXY.rstrip('/')}{raw_m3u8_url_found}"
-            return raw_m3u8_url_found
+                return f"{PROXY.rstrip('/')}{url_with_headers}"
+            return url_with_headers
         else:
             return None 
      
@@ -2755,13 +2763,28 @@ def italy_channels():
             os.remove(OUTPUT_FILE)
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
             f.write('#EXTM3U\n\n')
-            for category, channels in organized_channels.items():
-                channels.sort(key=lambda x: x["name"].lower())
-                for ch in channels:
+
+            vavoo_headers_str = "&h_User-Agent=VAVOO2/6&h_Referer=https://vavoo.to/&h_Origin=https://vavoo.to"
+            daddy_headers_str = "&h_User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36&h_Referer=https://alldownplay.xyz/&h_Origin=https://alldownplay.xyz"
+
+            for category, channels_list in organized_channels.items():
+                channels_list.sort(key=lambda x: x["name"].lower())
+                for ch in channels_list:
                     tvg_name_cleaned = re.sub(r"\s*\(.*?\)", "", ch["name"])
-                    final_url = ch['url']
+                    
+                    base_stream_url = ch['url']
+                    channel_display_name = ch['name']
+                    url_with_specific_headers = base_stream_url
+
+                    if channel_display_name.upper().endswith(" (D)"):
+                        url_with_specific_headers += daddy_headers_str
+                    elif not channel_display_name.upper().endswith(" (SS)"): # Assumed Vavoo
+                        url_with_specific_headers += vavoo_headers_str
+                    # Manual (SS) channels already have headers in base_stream_url
+
+                    final_url = url_with_specific_headers
                     if PROXY:
-                        final_url = f"{PROXY.rstrip('/')}{final_url}"
+                        final_url = f"{PROXY.rstrip('/')}{url_with_specific_headers}"
                     
                     f.write(f'#EXTINF:-1 tvg-id="{ch.get("tvg_id", "")}" tvg-name="{tvg_name_cleaned}" tvg-logo="{ch.get("logo", DEFAULT_TVG_ICON)}" group-title="{category}",{ch["name"]}\n')
                     f.write(f"{final_url}\n\n")
@@ -2959,6 +2982,8 @@ def world_channels_generator():
         # Ordina le categorie alfabeticamente e i canali dentro ogni categoria
         sorted_categories = sorted(grouped_channels.keys())
     
+        vavoo_headers_str = "&h_User-Agent=VAVOO2/6&h_Referer=https://vavoo.to/&h_Origin=https://vavoo.to"
+
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
             f.write('#EXTM3U\n\n')
     
@@ -2966,9 +2991,15 @@ def world_channels_generator():
                 # Ordina i canali in ordine alfabetico dentro la categoria
                 grouped_channels[country].sort(key=lambda x: x[0].lower())
     
-                for name, url in grouped_channels[country]:
+                for name, base_vavoo_url in grouped_channels[country]:
+                    url_with_specific_headers = base_vavoo_url + vavoo_headers_str
+                    
+                    final_url_to_write = url_with_specific_headers
+                    if PROXY: 
+                        final_url_to_write = f"{PROXY.rstrip('/')}{url_with_specific_headers}"
+
                     f.write(f'#EXTINF:-1 tvg-name="{name}" group-title="{country}", {name}\n')
-                    f.write(f"{PROXY}{url}\n\n")
+                    f.write(f"{final_url_to_write}\n\n")
     
     # Funzione principale
     def main():
