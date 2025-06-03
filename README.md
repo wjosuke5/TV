@@ -92,13 +92,33 @@ Se utilizzi **tvproxy**, hai la possibilità di lasciare il campo `PROXYIP` vuot
 
 ### 🔁 Come proxare la lista completa?
 
-Utilizza il seguente URL: `http://<server-ip>/proxy?url=<URL_LISTA_M3U>`
+Utilizza il seguente URL: `<server-ip>/proxy?url=<URL_LISTA_M3U>`
 
 questo sara il link della tua lista da mettere nelle app iptv!
 
 Sostituisci:
 
 - `<server-ip>` con l'indirizzo IP del tuo server  
+- `<URL_LISTA_M3U>` con l'URL effettivo della tua lista M3U (es. quello GitHub)
+
+Questo ti permetterà di servire la lista M3U attraverso il tuo proxy personale in modo sicuro e performante.
+
+---
+
+## 🔒 Proxy sicuro con mediaflow-proxy
+
+Se utilizzi **mediaflow-proxy**, hai la possibilità di lasciare il campo `PROXYIP` vuoto nel file `.env` e proxare direttamente la lista per una maggiore sicurezza.
+
+### 🔁 Come proxare la lista completa?
+
+Utilizza il seguente URL: `<server-ip>/proxy/hls/manifest.m3u8?api_password=<PASSWORD>&d=<URL_LISTA_M3U>`
+
+questo sara il link della tua lista da mettere nelle app iptv!
+
+Sostituisci:
+
+- `<server-ip>` con l'indirizzo IP del tuo server  
+- `<PASSWORD>` con la password del tuo mediaflow-proxy  
 - `<URL_LISTA_M3U>` con l'URL effettivo della tua lista M3U (es. quello GitHub)
 
 Questo ti permetterà di servire la lista M3U attraverso il tuo proxy personale in modo sicuro e performante.
