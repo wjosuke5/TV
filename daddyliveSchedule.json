@@ -4300,7 +4300,83 @@
                 ]
             }
         ],
-        "Tennis</span>": [
+        "Tennis WTA - ROLAND GARROS</span>": [
+            {
+                "time": "13:00",
+                "event": "WTA - ROLAND GARROS : Sabalenka A. vs Swiatek I.",
+                "channels": [
+                    {
+                        "channel_name": "Tennis Stream 16",
+                        "channel_id": "1516"
+                    },
+                    {
+                        "channel_name": "Tennis Stream 1",
+                        "channel_id": "1501"
+                    },
+                    {
+                        "channel_name": "Tennis Stream 21",
+                        "channel_id": "1521"
+                    }
+                ]
+            },
+            {
+                "time": "14:30",
+                "event": "WTA - ROLAND GARROS : Boisson L. vs Gauff C.",
+                "channels": [
+                    {
+                        "channel_name": "Tennis Stream 16",
+                        "channel_id": "1516"
+                    },
+                    {
+                        "channel_name": "Tennis Stream 1",
+                        "channel_id": "1501"
+                    },
+                    {
+                        "channel_name": "Tennis Stream 21",
+                        "channel_id": "1521"
+                    }
+                ]
+            }
+        ],
+        "Tennis ATP DOUBLES - ROLAND GARROS</span>": [
+            {
+                "time": "12:00",
+                "event": "ATP DOUBLES - ROLAND GARROS : Nys H./Roger-Vasselin E. vs Granollers M./Zeballos H.",
+                "channels": [
+                    {
+                        "channel_name": "Tennis Stream 2",
+                        "channel_id": "1502"
+                    },
+                    {
+                        "channel_name": "Tennis Stream 21",
+                        "channel_id": "1521"
+                    },
+                    {
+                        "channel_name": "Tennis Stream 22",
+                        "channel_id": "1522"
+                    }
+                ]
+            }
+        ],
+        "Tennis MIXED DOUBLES - ROLAND GARROS</span>": [
+            {
+                "time": "10:00",
+                "event": "MIXED DOUBLES - ROLAND GARROS : Townsend T./King E. vs Errani S./Vavassori A.",
+                "channels": [
+                    {
+                        "channel_name": "Tennis Stream 16",
+                        "channel_id": "1516"
+                    },
+                    {
+                        "channel_name": "Tennis Stream 1",
+                        "channel_id": "1501"
+                    },
+                    {
+                        "channel_name": "Tennis Stream 21",
+                        "channel_id": "1521"
+                    }
+                ]
+            },
             {
                 "time": "10:00",
                 "event": "Roland-Garros Mixed | Doubles | Final",
