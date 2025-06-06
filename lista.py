@@ -277,17 +277,6 @@ def eventi_m3u8_generator_world():
     # Definisci current_time e three_hours_in_seconds per la logica di caching
     current_time = time.time()
     three_hours_in_seconds = 3 * 60 * 60
-    
-    # Base URLs for the standard stream checking mechanism
-    NEW_KSO_BASE_URLS = [
-        "https://new.newkso.ru/wind/",
-        "https://new.newkso.ru/ddy6/",
-        "https://new.newkso.ru/zeko/",
-        "https://new.newkso.ru/nfs/",
-        "https://new.newkso.ru/dokko1/",
-    ]
-    # Specific base URL for tennis channels
-    WIKIHZ_TENNIS_BASE_URL = "https://new.newkso.ru/wikihz/"
 
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
@@ -685,78 +674,38 @@ def eventi_m3u8_generator_world():
         # Se non troviamo nulla, restituiamo None 
         return None
      
-    def get_stream_from_channel_id(channel_id_str, is_tennis_channel=False): 
-        # channel_id_str is the numeric ID like "121"
-        # is_tennis_channel is a boolean flag
-        raw_m3u8_url_found = None
-        daddy_headers_str = "&h_User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36&h_Referer=https://alldownplay.xyz/&h_Origin=https://alldownplay.xyz"
-
-
-        # Determine if we should use the special tennis URL logic
-        # True if flagged by name OR if channel ID is like "15xx" (4 digits starting with 15)
-        should_try_tennis_url = is_tennis_channel or \
-                                (channel_id_str.startswith("15") and len(channel_id_str) == 4)
-
-        if should_try_tennis_url:
-            if not is_tennis_channel and channel_id_str.startswith("15") and len(channel_id_str) == 4:
-                # Log if we're trying tennis logic based on ID pattern only
-                print(f"[INFO] Channel ID {channel_id_str} matches 15xx pattern. Attempting tennis-specific URL.")
-            # Try the specific tennis URL first
-            last_two_digits = channel_id_str[-2:].zfill(2)
-            tennis_stream_path = f"wikiten{last_two_digits}/mono.m3u8"
-            candidate_url = f"{WIKIHZ_TENNIS_BASE_URL.rstrip('/')}/{tennis_stream_path.lstrip('/')}"
-            try:
-                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2)
-                if response.status_code == 200:
-                    print(f"[✓] Stream TENNIS (or 15xx ID) trovato per channel ID {channel_id_str} at: {candidate_url}")
-                    raw_m3u8_url_found = candidate_url
-                response.close()
-            except requests.exceptions.Timeout:
-                # print(f"[!] Timeout checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}")
-                pass
-            except requests.exceptions.ConnectionError:
-                # print(f"[!] Connection error checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}")
-                pass
-            except requests.exceptions.RequestException:
-                # print(f"[!] Error checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}: {e}")
-                pass
+    def get_stream_from_channel_id(channel_id_str, is_tennis_channel=False):
+        # Rileva il tipo di proxy dal formato PROXYIP
+        is_mfp_proxy = PROXY and "manifest.m3u8?api_password=" in PROXY
         
-        if raw_m3u8_url_found: # If found with tennis/15xx logic, apply proxy and return
-            url_with_headers = raw_m3u8_url_found + daddy_headers_str
-            if PROXY:
-                return f"{PROXY.rstrip('/')}{url_with_headers}"
-            return url_with_headers
-
-        # If not found with tennis/15xx logic OR if it wasn't a tennis/15xx channel, try standard URLs
-        for base_url in NEW_KSO_BASE_URLS: # These are the standard base URLs
-            stream_path = f"premium{channel_id_str}/mono.m3u8"
-            candidate_url = f"{base_url.rstrip('/')}/{stream_path.lstrip('/')}"
-            try:
-                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2) # HTTP_TIMEOUT is 10, so 5s timeout
-                if response.status_code == 200:
-                    print(f"[✓] Stream found for channel ID {channel_id_str} at: {candidate_url}")
-                    raw_m3u8_url_found = candidate_url
-                    response.close() # Close the stream connection
-                    break 
-                else:
-                    pass
-                response.close() # Ensure connection is closed
-            except requests.exceptions.Timeout:
-                pass 
-            except requests.exceptions.ConnectionError:
-                pass
-            except requests.exceptions.RequestException: 
-                pass 
-        
-        if raw_m3u8_url_found: # This will be from the standard loop if reached here
-            url_with_headers = raw_m3u8_url_found + daddy_headers_str
-            if PROXY: # PROXY is a global variable from .env
-                return f"{PROXY.rstrip('/')}{url_with_headers}"
-            return url_with_headers
+        if is_mfp_proxy:
+            # Estrai serverip e password dal PROXYIP MFP
+            # Formato: https://serverip/proxy/hls/manifest.m3u8?api_password=password&d=
+            import re
+            match = re.search(r'https://([^/]+)/.*api_password=([^&]+)', PROXY)
+            if match:
+                serverip = match.group(1)
+                password = match.group(2)
+                # Costruisci l'URL per MFP
+                daddy_url = f"https://{serverip}/extractor/video?host=DLHD&redirect_stream=true&api_password={password}&d={LINK_DADDY}/stream/stream-{channel_id_str}.php"
+                return daddy_url
+            else:
+                return None
         else:
-            # This print might be too verbose if many channels fail, consider removing or reducing frequency
-            # print(f"[✗] No stream found for channel ID {channel_id_str} after checking all base URLs.")
-            return None 
+            # Logica originale per TVProxy o nessun proxy
+            daddy_url = f"{LINK_DADDY}/stream/stream-{channel_id_str}.php"
+            
+            try:
+                response = session.get(daddy_url, stream=True, timeout=HTTP_TIMEOUT / 2)
+                if response.status_code == 200:
+                    print(f"[✓] Stream DaddyLive trovato per channel ID {channel_id_str} at: {daddy_url}")
+                    response.close()
+                    return daddy_url
+                else:
+                    response.close()
+                    return None
+            except requests.exceptions.RequestException:
+                return None
      
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
@@ -916,17 +865,6 @@ def eventi_m3u8_generator():
     # Definisci current_time e three_hours_in_seconds per la logica di caching
     current_time = time.time()
     three_hours_in_seconds = 3 * 60 * 60
-    
-    # Base URLs for the standard stream checking mechanism
-    NEW_KSO_BASE_URLS_ITA = [ # Renamed to avoid conflict if this script was one giant file
-        "https://new.newkso.ru/wind/",
-        "https://new.newkso.ru/ddy6/",
-        "https://new.newkso.ru/zeko/",
-        "https://new.newkso.ru/nfs/",
-        "https://new.newkso.ru/dokko1/",
-    ]
-    # Specific base URL for tennis channels (duplicate for this function's scope)
-    WIKIHZ_TENNIS_BASE_URL_ITA = "https://new.newkso.ru/wikihz/"
 
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
@@ -1324,76 +1262,38 @@ def eventi_m3u8_generator():
         # Se non troviamo nulla, restituiamo None 
         return None
      
-    def get_stream_from_channel_id(channel_id_str, is_tennis_channel=False): 
-        # channel_id_str is the numeric ID like "121"
-        # is_tennis_channel is a boolean flag
-        raw_m3u8_url_found = None
-        daddy_headers_str = "&h_User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36&h_Referer=https://alldownplay.xyz/&h_Origin=https://alldownplay.xyz"
-
-
-        # Determine if we should use the special tennis URL logic
-        # True if flagged by name OR if channel ID is like "15xx" (4 digits starting with 15)
-        should_try_tennis_url = is_tennis_channel or \
-                                (channel_id_str.startswith("15") and len(channel_id_str) == 4)
-
-        if should_try_tennis_url:
-            if not is_tennis_channel and channel_id_str.startswith("15") and len(channel_id_str) == 4:
-                # Log if we're trying tennis logic based on ID pattern only
-                print(f"[INFO] Channel ID {channel_id_str} matches 15xx pattern. Attempting tennis-specific URL.")
-            # Try the specific tennis URL first
-            last_two_digits = channel_id_str[-2:].zfill(2)
-            tennis_stream_path = f"wikiten{last_two_digits}/mono.m3u8"
-            candidate_url = f"{WIKIHZ_TENNIS_BASE_URL_ITA.rstrip('/')}/{tennis_stream_path.lstrip('/')}"
-            try:
-                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2)
-                if response.status_code == 200:
-                    print(f"[✓] Stream TENNIS (or 15xx ID) trovato per channel ID {channel_id_str} at: {candidate_url}")
-                    raw_m3u8_url_found = candidate_url
-                response.close()
-            except requests.exceptions.Timeout:
-                # print(f"[!] Timeout checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}")
-                pass
-            except requests.exceptions.ConnectionError:
-                # print(f"[!] Connection error checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}")
-                pass
-            except requests.exceptions.RequestException:
-                # print(f"[!] Error checking TENNIS stream for channel ID {channel_id_str} at {candidate_url}: {e}")
-                pass
-
-        if raw_m3u8_url_found: # If found with tennis/15xx logic, apply proxy and return
-            url_with_headers = raw_m3u8_url_found + daddy_headers_str
-            if PROXY:
-                return f"{PROXY.rstrip('/')}{url_with_headers}"
-            return url_with_headers
-
-        # If not found with tennis/15xx logic OR if it wasn't a tennis/15xx channel, try standard URLs
-        for base_url in NEW_KSO_BASE_URLS_ITA: # These are the standard base URLs
-            stream_path = f"premium{channel_id_str}/mono.m3u8"
-            candidate_url = f"{base_url.rstrip('/')}/{stream_path.lstrip('/')}"
-            try:
-                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2)
-                if response.status_code == 200:
-                    print(f"[✓] Stream found for channel ID {channel_id_str} at: {candidate_url}")
-                    raw_m3u8_url_found = candidate_url
-                    response.close()
-                    break
-                else:
-                    pass
-                response.close()
-            except requests.exceptions.Timeout:
-                pass
-            except requests.exceptions.ConnectionError:
-                pass
-            except requests.exceptions.RequestException:
-                pass
+    def get_stream_from_channel_id(channel_id_str, is_tennis_channel=False):
+        # Rileva il tipo di proxy dal formato PROXYIP
+        is_mfp_proxy = PROXY and "manifest.m3u8?api_password=" in PROXY
         
-        if raw_m3u8_url_found: # This will be from the standard loop if reached here
-            url_with_headers = raw_m3u8_url_found + daddy_headers_str
-            if PROXY: # PROXY is a global variable from .env
-                return f"{PROXY.rstrip('/')}{url_with_headers}"
-            return url_with_headers
+        if is_mfp_proxy:
+            # Estrai serverip e password dal PROXYIP MFP
+            # Formato: https://serverip/proxy/hls/manifest.m3u8?api_password=password&d=
+            import re
+            match = re.search(r'https://([^/]+)/.*api_password=([^&]+)', PROXY)
+            if match:
+                serverip = match.group(1)
+                password = match.group(2)
+                # Costruisci l'URL per MFP
+                daddy_url = f"https://{serverip}/extractor/video?host=DLHD&redirect_stream=true&api_password={password}&d={LINK_DADDY}/stream/stream-{channel_id_str}.php"
+                return daddy_url
+            else:
+                return None
         else:
-            return None 
+            # Logica originale per TVProxy o nessun proxy
+            daddy_url = f"{LINK_DADDY}/stream/stream-{channel_id_str}.php"
+            
+            try:
+                response = session.get(daddy_url, stream=True, timeout=HTTP_TIMEOUT / 2)
+                if response.status_code == 200:
+                    print(f"[✓] Stream DaddyLive trovato per channel ID {channel_id_str} at: {daddy_url}")
+                    response.close()
+                    return daddy_url
+                else:
+                    response.close()
+                    return None
+            except requests.exceptions.RequestException:
+                return None
      
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
@@ -2520,15 +2420,6 @@ def italy_channels():
     # Crea una sessione requests per riutilizzare connessioni e gestire cookies
     session = requests.Session()
 
-    # Base URLs for the new stream checking mechanism for Daddylive channels
-    NEW_KSO_BASE_URLS_FOR_ITALY_CHANNELS = [
-        "https://new.newkso.ru/wind/",
-        "https://new.newkso.ru/ddy6/",
-        "https://new.newkso.ru/zeko/",
-        "https://new.newkso.ru/nfs/",
-        "https://new.newkso.ru/dokko1/",
-    ]
-
     BASE_URLS = [
         "https://vavoo.to"
     ]
@@ -2641,44 +2532,38 @@ def italy_channels():
         ]
 
     # --- Funzioni per risolvere gli stream Daddylive ---
-    def get_stream_from_channel_id(channel_id_str): # channel_id_str is the numeric ID like "121"
-        raw_m3u8_url_found = None
-        # Use the NEW_KSO_BASE_URLS_FOR_ITALY_CHANNELS defined in this function's scope
-        for base_url in NEW_KSO_BASE_URLS_FOR_ITALY_CHANNELS:
-            stream_path = f"premium{channel_id_str}/mono.m3u8"
-            candidate_url = f"{base_url.rstrip('/')}/{stream_path.lstrip('/')}"
+    def get_stream_from_channel_id(channel_id_str):
+        # Rileva il tipo di proxy dal formato PROXYIP
+        is_mfp_proxy = PROXY and "manifest.m3u8?api_password=" in PROXY
+        
+        if is_mfp_proxy:
+            # Estrai serverip e password dal PROXYIP MFP
+            # Formato: https://serverip/proxy/hls/manifest.m3u8?api_password=password&d=
+            import re
+            match = re.search(r'https://([^/]+)/.*api_password=([^&]+)', PROXY)
+            if match:
+                serverip = match.group(1)
+                password = match.group(2)
+                # Costruisci l'URL per MFP
+                daddy_url = f"https://{serverip}/extractor/video?host=DLHD&redirect_stream=true&api_password={password}&d={LINK_DADDY}/stream/stream-{channel_id_str}.php"
+                return daddy_url
+            else:
+                return None
+        else:
+            # Logica originale per TVProxy o nessun proxy
+            daddy_url = f"{LINK_DADDY}/stream/stream-{channel_id_str}.php"
             
             try:
-                # Using GET with stream=True and a timeout.
-                # HTTP_TIMEOUT is a global in this function's scope (italy_channels)
-                response = session.get(candidate_url, stream=True, timeout=HTTP_TIMEOUT / 2) 
+                response = session.get(daddy_url, stream=True, timeout=HTTP_TIMEOUT / 2)
                 if response.status_code == 200:
-                    print(f"[✓] Stream Daddylive (italy_channels) trovato per ID {channel_id_str} a: {candidate_url}")
-                    raw_m3u8_url_found = candidate_url
-                    response.close() # Close the stream connection
-                    break 
+                    print(f"[✓] Stream DaddyLive (italy_channels) trovato per ID {channel_id_str} a: {daddy_url}")
+                    response.close()
+                    return daddy_url
                 else:
-                    # Optional: log if status is not 200 but not an exception
-                    # print(f"[INFO] ID Canale {channel_id_str} non trovato a {candidate_url} (Status: {response.status_code})")
-                    pass
-                response.close() # Ensure connection is closed
-            except requests.exceptions.Timeout:
-                # print(f"[!] Timeout controllo stream per ID canale {channel_id_str} a {candidate_url}")
-                pass 
-            except requests.exceptions.ConnectionError:
-                # print(f"[!] Errore connessione controllo stream per ID canale {channel_id_str} a {candidate_url}")
-                pass
-            except requests.exceptions.RequestException: 
-                # print(f"[!] Errore controllo stream per ID canale {channel_id_str} a {candidate_url}: {e}")
-                pass 
-        
-        if raw_m3u8_url_found:
-            # PROXY is a global in this function's scope (italy_channels)
-            # Non applichiamo il proxy qui, verrà fatto in save_m3u8 se PROXY è definito
-            return raw_m3u8_url_found
-        else:
-            # print(f"[✗] Nessuno stream trovato per ID canale {channel_id_str} dopo aver controllato tutte le URL base.")
-            return None
+                    response.close()
+                    return None
+            except requests.exceptions.RequestException:
+                return None
     # --- Fine funzioni Daddylive ---
 
     def fetch_channels_from_daddylive_page(page_url, base_daddy_url):
@@ -2765,7 +2650,7 @@ def italy_channels():
             f.write('#EXTM3U\n\n')
 
             vavoo_headers_str = "&h_User-Agent=VAVOO2/6&h_Referer=https://vavoo.to/&h_Origin=https://vavoo.to"
-            daddy_headers_str = "&h_User-Agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36&h_Referer=https://alldownplay.xyz/&h_Origin=https://alldownplay.xyz"
+            daddy_headers_str = ""
 
             for category, channels_list in organized_channels.items():
                 channels_list.sort(key=lambda x: x["name"].lower())
@@ -2776,14 +2661,13 @@ def italy_channels():
                     channel_display_name = ch['name']
                     url_with_specific_headers = base_stream_url
 
-                    if channel_display_name.upper().endswith(" (D)"):
-                        url_with_specific_headers += daddy_headers_str
-                    elif not channel_display_name.upper().endswith(" (SS)"): # Assumed Vavoo
+                    if not channel_display_name.upper().endswith(" (D)") and not channel_display_name.upper().endswith(" (SS)"): # Assumed Vavoo or others that are not Daddy or SS
                         url_with_specific_headers += vavoo_headers_str
                     # Manual (SS) channels already have headers in base_stream_url
 
                     final_url = url_with_specific_headers
-                    if PROXY:
+                    # Non applicare il proxy ai canali DaddyLive se l'URL contiene già il proxy MFP
+                    if PROXY and not (channel_display_name.upper().endswith(" (D)") and "extractor/video" in base_stream_url):
                         final_url = f"{PROXY.rstrip('/')}{url_with_specific_headers}"
                     
                     f.write(f'#EXTINF:-1 tvg-id="{ch.get("tvg_id", "")}" tvg-name="{tvg_name_cleaned}" tvg-logo="{ch.get("logo", DEFAULT_TVG_ICON)}" group-title="{category}",{ch["name"]}\n')
@@ -2995,7 +2879,7 @@ def world_channels_generator():
                     url_with_specific_headers = base_vavoo_url + vavoo_headers_str
                     
                     final_url_to_write = url_with_specific_headers
-                    if PROXY: 
+                    if PROXY:
                         final_url_to_write = f"{PROXY.rstrip('/')}{url_with_specific_headers}"
 
                     f.write(f'#EXTINF:-1 tvg-name="{name}" group-title="{country}", {name}\n')
