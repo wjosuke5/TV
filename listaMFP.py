@@ -677,11 +677,11 @@ def eventi_m3u8_generator_world():
         embed_url = f"{LINK_DADDY}/stream/stream-{channel_id}.php" 
 
         if MFP_IP:
-            encoded_php_url = urllib.parse.quote(embed_url, safe='')
-            return f"{MFP_IP.rstrip('/')}/extractor/video?host=DLHD&api_password={MFP_PASSWORD}&redirect_stream=true&d={encoded_php_url}"
+            return f"{MFP_IP.rstrip('/')}/extractor/video?host=DLHD&api_password={MFP_PASSWORD}&redirect_stream=true&d={embed_url}"
         else:
-            print(f"[!] MFP_IP non impostato. Impossibile generare l'URL extractor per il canale Daddylive {channel_id}.")
-            return None
+            print(f"[!] MFP_IP non impostato. Generazione URL base per il canale Daddylive {channel_id}.")
+            base_url = f"{LINK_DADDY}/stream/stream-{channel_id}.php"
+            return base_url
      
     # def clean_category_name(name): # Rimossa definizione duplicata
     #     # Rimuove tag html come </span> o simili
@@ -1256,11 +1256,11 @@ def eventi_m3u8_generator():
         embed_url = f"{LINK_DADDY}/stream/stream-{channel_id}.php" 
 
         if MFP_IP:
-            encoded_php_url = urllib.parse.quote(embed_url, safe='')
-            return f"{MFP_IP.rstrip('/')}/extractor/video?host=DLHD&api_password={MFP_PASSWORD}&redirect_stream=true&d={encoded_php_url}"
+            return f"{MFP_IP.rstrip('/')}/extractor/video?host=DLHD&api_password={MFP_PASSWORD}&redirect_stream=true&d={embed_url}"
         else:
-            print(f"[!] MFP_IP non impostato. Impossibile generare l'URL extractor per il canale Daddylive {channel_id}.")
-            return None
+            print(f"[!] MFP_IP non impostato. Generazione URL base per il canale Daddylive {channel_id}.")
+            base_url = f"{LINK_DADDY}/stream/stream-{channel_id}.php"
+            return base_url
      
     def clean_category_name(name): 
         # Rimuove tag html come </span> o simili 
@@ -2481,11 +2481,11 @@ def italy_channels():
         raw_php_url = f"{LINK_DADDY.rstrip('/')}/stream/stream-{channel_id}.php"
         
         if MFP_IP:
-            encoded_php_url = urllib.parse.quote(raw_php_url, safe='')
-            return f"{MFP_IP.rstrip('/')}/extractor/video?host=DLHD&api_password={MFP_PASSWORD}&redirect_stream=true&d={encoded_php_url}"
+            return f"{MFP_IP.rstrip('/')}/extractor/video?host=DLHD&api_password={MFP_PASSWORD}&redirect_stream=true&d={raw_php_url}"
         else:
-            print(f"[!] MFP_IP non impostato. Impossibile generare l'URL extractor per il canale Daddylive {channel_id}.")
-            return None
+            print(f"[!] MFP_IP non impostato. Generazione URL base per il canale Daddylive {channel_id}.")
+            base_url = f"{LINK_DADDY}/stream/stream-{channel_id}.php"
+            return base_url
     # --- Fine funzioni Daddylive ---
 
     def fetch_channels_from_daddylive_page(page_url, base_daddy_url):
@@ -2577,8 +2577,6 @@ def italy_channels():
                     channel_name = ch['name']
                     tvg_name_cleaned = re.sub(r"\s*\(.*?\)", "", ch["name"])
 
-                    # I canali Daddylive (marcati con "(D)") hanno già l'URL formattato da get_stream_from_channel_id
-                    # Altri canali (Vavoo, manuali) necessitano del wrapper proxy/hls se MFP_IP è impostato
                     if MFP_IP and not channel_name.upper().endswith(" (D)"):
                         # Canale Vavoo o manuale, applica il formato proxy/hls
                         final_url_to_write = f"{MFP_IP.rstrip('/')}/proxy/hls/manifest.m3u8?api_password={MFP_PASSWORD}&d={raw_channel_url}"
@@ -2588,7 +2586,14 @@ def italy_channels():
 
                     if final_url_to_write: # Scrivi solo se l'URL è valido
                         f.write(f'#EXTINF:-1 tvg-id="{ch.get("tvg_id", "")}" tvg-name="{tvg_name_cleaned}" tvg-logo="{ch.get("logo", DEFAULT_TVG_ICON)}" group-title="{category}",{ch["name"]}\n')
-                        f.write(f"{final_url_to_write}\n\n")
+                        
+                        # Controlla se è un file .php (più generico)
+                        if final_url_to_write.endswith('.php'):
+                            # Per i file .php, non aggiungere i parametri VAVOO
+                            f.write(f"{final_url_to_write}\n\n")
+                        else:
+                            # Per gli altri canali, aggiungi i parametri VAVOO
+                            f.write(f"{final_url_to_write}&h_User-Agent=VAVOO2/6&h_Referer=https://vavoo.to/&h_Origin=https://vavoo.to\n\n")
                     else:
                         print(f"Skipping channel {channel_name} due to missing stream URL after processing.")
 
@@ -2802,7 +2807,7 @@ def world_channels_generator():
                         # Se MFP_IP non è settato, usa l'URL originale
                         final_url_to_write = url
                     f.write(f'#EXTINF:-1 tvg-name="{name}" group-title="{country}", {name}\n')
-                    f.write(f"{final_url_to_write}\n\n")
+                    f.write(f"{final_url_to_write}&h_User-Agent=VAVOO2/6&h_Referer=https://vavoo.to/&h_Origin=https://vavoo.to\n\n")
     
     # Funzione principale
     def main():
@@ -2824,7 +2829,7 @@ def removerworld():
     import os
     
     # Lista dei file da eliminare
-    files_to_delete = ["world.m3u8", "channels_italy.m3u8", "eventi.m3u8", "eventi.xml"]
+    files_to_delete = ["world.m3u8", "eventisps.m3u8", "channels_italy.m3u8", "eventi.m3u8", "eventi.xml"]
     
     for filename in files_to_delete:
         if os.path.exists(filename):
@@ -2840,7 +2845,7 @@ def remover():
     import os
     
     # Lista dei file da eliminare
-    files_to_delete = ["channels_italy.m3u8", "eventi.m3u8", "eventi.xml"]
+    files_to_delete = ["channels_italy.m3u8", "eventi.m3u8", "eventisps.m3u8", "eventi.xml"]
     
     for filename in files_to_delete:
         if os.path.exists(filename):
